@@ -1,0 +1,631 @@
+<title>Ride Dispatch</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Overpass:wght@400;600;700;800&family=Overpass+Mono:wght@400;600&display=swap">
+<style>
+:root{
+  --bg:#ECEFEC; --surface:#FFFFFF; --surface-2:#F5F7F5; --ink:#15201B; --muted:#5A6A62; --line:#D2DAD5;
+  --sign:#1B6A49; --sign-ink:#FFFFFF; --sign-edge:#0F4B33;
+  --amber:#B97F00; --amber-bg:#FFF3D1; --red:#B63A28; --red-bg:#FBE4DF; --ok:#1B6A49; --ok-bg:#DDEFE5;
+  --focus:#2F7CF6;
+  --display:"Overpass","Highway Gothic","Arial Narrow",system-ui,sans-serif;
+  --mono:"Overpass Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#0E1411; --surface:#161F1B; --surface-2:#1C2721; --ink:#E4ECE7; --muted:#95A69D; --line:#2A3831;
+    --sign:#237A55; --sign-ink:#FFFFFF; --sign-edge:#3E9A70;
+    --amber:#F2B632; --amber-bg:#3A2F12; --red:#EE7C66; --red-bg:#3D211C; --ok:#5CC495; --ok-bg:#16342A;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#0E1411; --surface:#161F1B; --surface-2:#1C2721; --ink:#E4ECE7; --muted:#95A69D; --line:#2A3831;
+  --sign:#237A55; --sign-ink:#FFFFFF; --sign-edge:#3E9A70;
+  --amber:#F2B632; --amber-bg:#3A2F12; --red:#EE7C66; --red-bg:#3D211C; --ok:#5CC495; --ok-bg:#16342A;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg)}
+body{color:var(--ink);font-family:var(--display);font-size:15px;line-height:1.45;margin:0}
+.wrap{max-width:1240px;margin:0 auto;padding-inline:20px;padding-block:0 48px}
+h1,h2,h3{text-wrap:balance;margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.label{font-size:11.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:700}
+
+/* top bar */
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bg);border-bottom:1px solid var(--line)}
+.top .wrap{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;padding-block:12px;padding-bottom:12px}
+.brand{display:flex;align-items:center;gap:10px}
+.shield{width:34px;height:34px;border-radius:7px;background:var(--sign);border:2px solid var(--sign-edge);display:grid;place-items:center;color:var(--sign-ink);font-weight:800;font-size:14px;letter-spacing:.02em}
+.brand h1{font-size:20px;font-weight:800;letter-spacing:-.01em}
+.mode{font-size:12.5px;font-weight:700;padding:3px 10px;border-radius:99px;background:var(--surface-2);border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.mode.live{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.mode.live::before{content:"";display:inline-block;width:7px;height:7px;border-radius:50%;background:currentColor;margin-right:6px;vertical-align:1px;animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.spacer{flex:1}
+.next{font-size:14px;color:var(--muted)}
+.next b{color:var(--ink)}
+.clock{font-family:var(--mono);font-size:14px;color:var(--muted)}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:7px 12px;font-weight:700;font-size:13.5px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none;color:var(--ink);white-space:nowrap}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--sign);border-color:var(--sign-edge);color:var(--sign-ink)}
+.btn.on{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.btn.small{padding:5px 9px;font-size:12.5px}
+.btn:disabled{opacity:.5;cursor:default}
+
+/* summary */
+.summary{display:flex;flex-wrap:wrap;gap:6px 22px;padding-block:18px 14px;font-size:15px;color:var(--muted)}
+.summary b{font-size:22px;color:var(--ink);font-weight:800;margin-right:4px;font-variant-numeric:tabular-nums}
+.summary .warn b{color:var(--red)}
+
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:22px;align-items:start}
+@media (max-width:960px){.grid{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+/* trip = highway guide sign */
+.trips{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px}
+@media (max-width:420px){.trips{grid-template-columns:minmax(0,1fr)}}
+.trip{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.sign{background:var(--sign);color:var(--sign-ink);padding:12px 14px 13px;border-bottom:3px solid var(--sign-edge);position:relative}
+.sign .row{display:flex;align-items:flex-start;gap:10px}
+.tab{background:var(--sign-ink);color:var(--sign);font-weight:800;font-size:12px;letter-spacing:.08em;padding:2px 7px 1px;border-radius:4px;white-space:nowrap}
+.sign .from{font-size:12.5px;opacity:.85;font-weight:600}
+.sign .route{font-size:22px;font-weight:800;line-height:1.15;margin-top:6px;letter-spacing:-.005em;text-wrap:balance}
+.sign .route .arr{opacity:.7;font-weight:600;padding-inline:2px}
+.sign .time{margin-left:auto;text-align:right;font-family:var(--mono);font-weight:600;font-size:20px;line-height:1.1;white-space:nowrap}
+.sign .time small{display:block;font-size:11.5px;opacity:.85;font-weight:400;letter-spacing:.04em;text-transform:uppercase;font-family:var(--display)}
+.trip .body{padding:12px 14px 14px;display:flex;flex-direction:column;gap:11px;flex:1}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{font-size:12px;font-weight:700;padding:3px 8px;border-radius:99px;background:var(--surface-2);color:var(--muted);border:1px solid var(--line);white-space:nowrap}
+.chip.amber{background:var(--amber-bg);color:var(--amber);border-color:transparent}
+.chip.red{background:var(--red-bg);color:var(--red);border-color:transparent}
+.chip.ok{background:var(--ok-bg);color:var(--ok);border-color:transparent}
+.seatbar{display:flex;gap:3px}
+.seatbar i{width:14px;height:8px;border-radius:2px;background:var(--line)}
+.seatbar i.f{background:var(--sign)}
+.legs{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 10px;font-size:14px}
+.legs dt{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;padding-top:2px;white-space:nowrap}
+.legs dd{margin:0}
+.who{display:flex;flex-direction:column;gap:2px}
+.who span{display:flex;gap:8px;justify-content:space-between}
+.who .nm{display:flex;flex-direction:column;gap:0}
+.ph{font-family:var(--mono);font-size:12px;color:var(--ok);text-decoration:none;white-space:nowrap}
+.ph:hover{text-decoration:underline}
+.who em{font-style:normal;color:var(--muted);font-size:12.5px;font-family:var(--mono);white-space:nowrap}
+.actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:auto;padding-top:4px}
+.trip.past{opacity:.6}
+.plan{display:flex;flex-direction:column;gap:0;max-width:720px}
+.plan .trip{margin:0}
+.leg{display:flex;align-items:center;gap:10px;padding:8px 0 8px 22px;color:var(--muted);font-size:13px;position:relative}
+.leg::before{content:"";position:absolute;left:10px;top:0;bottom:0;border-left:2px dashed var(--line)}
+.leg b{color:var(--ink);font-weight:700}
+.chip.sug{background:var(--amber-bg);color:var(--amber);border-color:transparent}
+.mytrips{display:flex;flex-direction:column;gap:6px}
+.mytrip{display:flex;align-items:center;gap:8px;justify-content:space-between;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:13.5px}
+.mytrip small{color:var(--muted);display:block}
+.trip.soon .sign{box-shadow:inset 0 -3px 0 var(--amber)}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.panel h2{font-size:16px;font-weight:800}
+.panel p{margin:0;color:var(--muted);font-size:13.5px}
+.section-h{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.section-h h2{font-size:18px;font-weight:800}
+.section-h .label{margin-left:auto}
+textarea{width:100%;min-height:120px;resize:vertical;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:var(--surface-2);font-family:var(--mono);font-size:12px;line-height:1.5}
+input[type=text],input[type=number],input[type=datetime-local],select{border:1px solid var(--line);border-radius:7px;padding:6px 8px;background:var(--surface-2);min-width:0;max-width:100%}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.form label{display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--muted);font-weight:600}
+.form label.full{grid-column:1/-1}
+.form input:not([type=checkbox]),.form select{width:100%}
+.form > *{min-width:0}
+.check{display:flex!important;flex-direction:row!important;align-items:center;gap:8px;color:var(--ink)!important}
+.row-btns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.hint{font-size:12.5px;color:var(--muted)}
+.qr{background:#fff;border-radius:8px;padding:8px;width:220px;max-width:100%;align-self:center}
+.groups{display:flex;flex-direction:column;gap:6px;max-height:220px;overflow:auto}
+.status-line{display:flex;gap:8px;align-items:center;font-weight:700}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.dot.ok{background:var(--ok)}.dot.amber{background:var(--amber)}.dot.red{background:var(--red)}
+
+.alerts{display:flex;flex-direction:column;gap:8px;max-height:360px;overflow:auto}
+.alert{border-left:3px solid var(--line);padding:2px 0 2px 10px}
+.alert.urgent{border-color:var(--amber)}
+.alert b{display:block;font-size:13.5px}
+.alert p{white-space:pre-line;font-size:12.5px}
+.alert time{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:760px}
+th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700;background:var(--surface-2)}
+tr:last-child td{border-bottom:0}
+td.msg{max-width:340px;color:var(--muted)}
+.fix{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.empty{color:var(--muted);padding:18px;text-align:center;border:1px dashed var(--line);border-radius:12px}
+details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:6px}
+
+.toasts{position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:8px;z-index:20;max-width:min(380px,calc(100vw - 32px))}
+.toast{background:var(--ink);color:var(--bg);border-radius:10px;padding:10px 14px;box-shadow:0 8px 24px rgba(0,0,0,.25);animation:in .25s ease-out}
+.toast.urgent{background:var(--amber);color:#1a1300}
+.toast b{display:block}
+.toast p{margin:2px 0 0;white-space:pre-line;font-size:13px}
+@keyframes in{from{transform:translateY(8px);opacity:.3}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<header class="top">
+  <div class="wrap">
+    <div class="brand"><div class="shield" aria-hidden="true">RD</div><h1>Ride Dispatch</h1></div>
+    <span id="mode" class="mode">Offline</span>
+    <span class="spacer"></span>
+    <span id="next" class="next"></span>
+    <span id="clock" class="clock"></span>
+    <button id="alertsBtn" class="btn" type="button">Turn on sound alerts</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="summary" class="summary"></div>
+
+  <div class="grid">
+    <div class="col">
+      <div id="mineWrap" hidden>
+        <div class="section-h"><h2>Trips you're taking</h2></div>
+        <div id="mine" class="trips"></div>
+      </div>
+
+      <div class="section-h"><h2 id="worthTitle">Rides worth taking</h2><span class="hint" id="tripHint"></span><span class="label" id="winLabel"></span></div>
+      <div id="trips" class="trips"></div>
+      <details id="pastWrap" hidden><summary id="pastSum"></summary><div id="past" class="trips"></div></details>
+
+      <div class="section-h"><h2>Smaller groups</h2><span class="hint" id="smallHint"></span></div>
+      <div id="skipped"></div>
+
+      <div class="section-h"><h2>Needs details</h2><span class="hint">Ride requests missing a destination, a time, or where they start. Fill them in and they join a group.</span></div>
+      <div id="details"></div>
+
+      <div class="section-h"><h2>Everything read from the chat</h2></div>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Sent</th><th>From</th><th>Read as</th><th>Route</th><th>Needs ride</th><th>Seats</th><th>Message</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table></div>
+    </div>
+
+    <aside class="col">
+      <section class="panel" id="source"></section>
+
+      <section class="panel">
+        <h2>Your settings</h2>
+        <form class="form" id="settingsForm">
+          <label>Seats in your car<input id="s_cap" type="number" min="1" max="8"></label>
+          <label>Worth it from (people)<input id="s_min" type="number" min="1" max="8"></label>
+          <label>Same time means within (min)<input id="s_win" type="number" min="5" max="180" step="5"></label>
+          <label>Alert before you leave (min)<input id="s_lead" type="number" min="1" max="180"></label>
+          <label class="full">Riders start from (if they don't say)<select id="s_home"></select></label>
+          <label class="full check"><input id="s_onway" type="checkbox"> Also group riders going to cities on the way (e.g. Kyle on the way to Austin)</label>
+          <div class="full" id="liveOnly" hidden>
+            <div class="form">
+              <label class="full check"><input id="s_alertNew" type="checkbox"> Alert me when a group reaches the minimum</label>
+              <label class="full check"><input id="s_notifySelf" type="checkbox"> Send alerts to my own WhatsApp ("Message yourself")</label>
+              <label class="full">Phone push topic (free ntfy app, optional)<input id="s_ntfy" type="text" placeholder="e.g. smtx-rides-7421"></label>
+            </div>
+          </div>
+          <div class="full row-btns"><button class="btn primary" type="submit">Save</button><span class="hint" id="savedNote"></span></div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="section-h"><h2>Alerts</h2><button class="btn small" id="testAlert" type="button">Send test alert</button></div>
+        <div id="alerts" class="alerts"></div>
+      </section>
+    </aside>
+  </div>
+</main>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="rides.js"></script>
+<script>
+(function(){
+'use strict';
+const R = window.Rides;
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const store = { get(k, d){ try { const v = localStorage.getItem('rd.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+                set(k, v){ try { localStorage.setItem('rd.' + k, JSON.stringify(v)); } catch {} } };
+const MY_INVITE = '';   // optional: prefill the invite box with your group's link (keep it out of public code)
+
+let S = { live:false, wa:null, settings:{ win:30, cap:3, minPeople:3, sameDest:true, lead:15, home:'San Marcos', detour:25, myTrips:[] }, plan:{requests:[],drivers:[],mine:[],worth:[],small:[],trips:[],tooBig:[],cancelled:[]}, alerts:[], cityNames:[] };
+let off = null;           // offline-mode data
+let sound = false, audio = null;
+
+// ---------- alerts (sound + browser notification + toast) ----------
+function beep(urgent){
+  if (!sound) return;
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const tones = urgent ? [880, 660, 880] : [660];
+    tones.forEach((f, i) => { const o = audio.createOscillator(), g = audio.createGain();
+      o.frequency.value = f; o.type = 'sine'; o.connect(g); g.connect(audio.destination);
+      const t = audio.currentTime + i * 0.22; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2);
+      o.start(t); o.stop(t + 0.21); });
+  } catch {}
+}
+function toast(a){
+  const el = document.createElement('div');
+  el.className = 'toast' + (a.level === 'urgent' ? ' urgent' : '');
+  el.innerHTML = '<b>' + esc(a.title) + '</b><p>' + esc(a.body) + '</p>';
+  $('toasts').prepend(el);
+  setTimeout(() => el.remove(), a.level === 'urgent' ? 20000 : 9000);
+  beep(a.level === 'urgent');
+  try { if (window.Notification && Notification.permission === 'granted') new Notification(a.title, { body: a.body, tag: a.id }); } catch {}
+  if (document.hidden) document.title = '🔔 ' + a.title;
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) document.title = 'Ride Dispatch'; });
+$('alertsBtn').addEventListener('click', async () => {
+  sound = !sound;
+  $('alertsBtn').classList.toggle('on', sound);
+  $('alertsBtn').textContent = sound ? 'Sound alerts on' : 'Turn on sound alerts';
+  if (sound) { beep(false); try { if (window.Notification && Notification.permission === 'default') await Notification.requestPermission(); } catch {}
+    try { await navigator.wakeLock?.request('screen'); } catch {} }
+});
+
+// ---------- formatting ----------
+const fmtT = ms => R.fmtTime(ms);
+const fmtD = ms => R.fmtDay(ms);
+function until(ms){
+  const m = Math.round((ms - Date.now()) / 60000);
+  if (m < -1) return (m > -60 ? -m + ' min ago' : Math.round(-m/60) + ' h ago');
+  if (m <= 1) return 'now';
+  if (m < 60) return 'in ' + m + ' min';
+  const h = Math.floor(m / 60), r = m % 60;
+  return h < 24 ? 'in ' + h + ' h' + (r ? ' ' + r + ' min' : '') : 'in ' + Math.round(h/24) + ' d';
+}
+const letter = i => String.fromCharCode(65 + (i % 26)) + (i >= 26 ? Math.floor(i/26) : '');
+
+// Phone number shown as a link that opens a WhatsApp chat with that person
+const phoneLink = r => r && r.phone ? ' <a class="ph" target="_blank" rel="noopener" title="Message on WhatsApp" href="https://wa.me/' + esc(r.phone) + '">' + esc(R.fmtPhone(r.phone)) + '</a>' : (S.live ? ' <span class="hint">number hidden by WhatsApp</span>' : '');
+const numbersText = t => t.riders.map(r => r.sender + ': ' + (r.phone ? R.fmtPhone(r.phone) : 'number hidden')).join('\n');
+const localInput = ms => { const d = new Date(ms - new Date(ms).getTimezoneOffset()*60000); return d.toISOString().slice(0,16); };
+
+// ---------- rendering ----------
+function render(){
+  const { plan, settings } = S;
+  const now = Date.now();
+  const live = t => t.depart > now - 15*60000;
+  const worth = (plan.worth || []).filter(live), mine = (plan.mine || []).filter(live);
+  const past = [...(plan.worth || []), ...(plan.mine || [])].filter(t => !live(t)).sort((a,b) => b.depart - a.depart);
+  const small = (plan.small || []).filter(live);
+  const missing = plan.requests.filter(r => R.isIncomplete(r, settings.home));
+
+  $('mode').className = 'mode' + (S.live && S.wa && S.wa.status === 'connected' ? ' live' : '');
+  $('mode').textContent = S.live ? (S.wa && S.wa.status === 'connected' ? 'Live from WhatsApp' : 'Server running, WhatsApp not linked') : 'Offline · exported chat';
+  const n = [...mine, ...worth].sort((a,b) => a.depart - b.depart).find(t => t.depart > now - 60000);
+  $('next').innerHTML = n ? 'Next: <b>' + esc(n.local ? n.route : n.fromLabel + ' → ' + n.route) + '</b> ' + esc(until(n.depart)) + ' · ' + n.seats + ' people' : '';
+  $('worthTitle').textContent = 'Rides worth taking (' + settings.minPeople + '+ people)';
+  $('winLabel').textContent = 'same place · within ' + settings.win + ' min · ' + settings.cap + ' seats';
+  $('tripHint').textContent = worth.length ? 'Passengers going to the same place at about the same time.' : '';
+  $('smallHint').textContent = 'Fewer than ' + settings.minPeople + ' people so far. They move up when more people ask.';
+
+  $('summary').innerHTML =
+    '<span><b>' + worth.length + '</b>rides with ' + settings.minPeople + '+ people</span>' +
+    '<span><b>' + mine.length + '</b>you’re taking</span>' +
+    '<span><b>' + small.length + '</b>smaller groups</span>' +
+    '<span class="' + (missing.length ? 'warn' : '') + '"><b>' + missing.length + '</b>need details</span>';
+
+  $('mineWrap').hidden = !mine.length;
+  $('mine').innerHTML = mine.map(t => tripCard(t)).join('');
+  $('trips').innerHTML = worth.length ? worth.map(t => tripCard(t)).join('') :
+    '<div class="empty">No group has ' + settings.minPeople + '+ people yet. You’ll get an alert as soon as one does.</div>';
+  $('pastWrap').hidden = !past.length;
+  $('pastSum').textContent = 'Earlier (' + past.length + ')';
+  $('past').innerHTML = past.map(t => tripCard(t, true)).join('');
+
+  renderSmall(small);
+  renderDetails(missing);
+  renderRows();
+  renderAlerts();
+}
+
+function tripCard(t, isPast){
+  const now = Date.now();
+  const soon = !isPast && t.depart - now <= S.settings.lead * 60000 && t.depart - now > -15*60000;
+  const chips = [];
+  chips.push(soon ? '<span class="chip amber">Leaves ' + esc(until(t.depart)) + '</span>' : '<span class="chip">' + esc(until(t.depart)) + '</span>');
+  if (t.mine) chips.push('<span class="chip ok">You’re taking this</span>');
+  else if (t.seats >= t.cap) chips.push('<span class="chip ok">Full car</span>');
+  if (t.clash) chips.push('<span class="chip red">' + esc(t.clash) + '</span>');
+  if (t.drops.length > 1) chips.push('<span class="chip">' + t.drops.length + ' drop-offs</span>');
+  if (t.miles) chips.push('<span class="chip">≈ ' + Math.round(t.miles) + ' mi</span>');
+  const seats = Array.from({length:t.cap}, (_,i) => '<i class="' + (i < t.seats ? 'f' : '') + '"></i>').join('');
+  const route = t.local ? esc(t.route) : t.drops.map(d => esc(d.name)).join('<span class="arr"> → </span>');
+  const pick = t.stops.map(g => '<span>' + esc(g[0].pickupLabel || g[0].pickup || 'Spot not given') + '<em>' + esc(g.map(r => r.sender.split(' ')[0]).join(', ')) + '</em></span>').join('');
+  const riders = t.riders.length ? t.riders.map(r => '<span><span class="nm">' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + phoneLink(r) + '</span><em>' + (t.drops.length > 1 ? esc(r.dest) + ' · ' : '') + 'wants ' + esc(fmtT(r.when)) + '</em></span>').join('') : '<span class="hint">No passengers yet.</span>';
+  const offer = R.offerMessage(t);
+  return '<article class="trip' + (isPast ? ' past' : '') + (soon ? ' soon' : '') + '">' +
+    '<div class="sign"><div class="row"><span class="tab">' + t.seats + ' PEOPLE</span><span class="from">' + (t.local ? 'local ride' : 'from ' + esc(t.fromLabel)) + '</span>' +
+    '<div class="time">' + esc(fmtT(t.depart)) + '<small>' + esc(fmtD(t.depart)) + '</small></div></div>' +
+    '<div class="route">' + route + '</div></div>' +
+    '<div class="body"><div class="chips">' + chips.join('') + '</div>' +
+    '<div class="row-btns"><span class="label">Seats ' + t.seats + '/' + t.cap + '</span><span class="seatbar">' + seats + '</span></div>' +
+    '<dl class="legs">' + (t.riders.length ? '<dt>Pickup</dt><dd class="who">' + pick + '</dd>' : '') + '<dt>Riders</dt><dd class="who">' + riders + '</dd></dl>' +
+    '<div class="actions">' +
+    (isPast ? '' : t.mine ? '<button class="btn small" type="button" data-rm="' + esc(t.mine) + '">Not going</button>'
+                          : '<button class="btn small primary" type="button" data-keep="' + esc(t.id) + '">I’m taking this</button>') +
+    (t.riders.length ? '<button class="btn small" type="button" data-copy="' + esc(numbersText(t)) + '" data-label="Copy numbers">Copy numbers</button>' : '') +
+    '<button class="btn small" type="button" data-copy="' + esc(offer) + '" data-label="Copy seat post">Copy seat post</button>' +
+    (S.live && !isPast ? '<button class="btn small" type="button" data-post="' + esc(t.id) + '">Post seats to group</button>' : '') +
+    '</div></div></article>';
+}
+
+function renderSmall(small){
+  const big = S.plan.tooBig || [];
+  $('skipped').innerHTML = (small.length || big.length) ? '<div class="tablewrap"><table><thead><tr><th>People</th><th>Route</th><th>Time</th><th>Riders</th><th></th></tr></thead><tbody>' +
+    small.map(t => '<tr><td class="mono">' + t.seats + '/' + t.cap + '</td><td>' + esc(t.local ? t.route : t.fromLabel + ' → ' + t.route) + '</td>' +
+      '<td class="mono">' + esc(fmtD(t.depart) + ' ' + fmtT(t.depart)) + '</td>' +
+      '<td>' + t.riders.map(r => esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + phoneLink(r)).join('<br>') + '</td>' +
+      '<td><button class="btn small" type="button" data-keep="' + esc(t.id) + '">Take anyway</button></td></tr>').join('') +
+    big.map(r => '<tr><td class="mono">' + r.seats + '</td><td>' + esc((r.from || S.settings.home) + ' → ' + r.dest) + '</td><td class="mono">' + esc(fmtD(r.when) + ' ' + fmtT(r.when)) + '</td><td>' + esc(r.sender) + phoneLink(r) + '</td><td class="hint">More people than your seats</td></tr>').join('') +
+    '</tbody></table></div>' : '<div class="empty">No other ride requests right now.</div>';
+}
+
+let detailsKey = '';
+function renderDetails(missing){
+  const key = missing.map(r => r.id).join('|') + S.cityNames.length;
+  if (key === detailsKey) return;
+  detailsKey = key;
+  if (!missing.length) { $('details').innerHTML = '<div class="empty">Every request has a city and a time.</div>'; return; }
+  const opts = '<option value="">City…</option>' + S.cityNames.map(c => '<option>' + esc(c) + '</option>').join('');
+  const local = ms => { const d = new Date(ms - new Date(ms).getTimezoneOffset()*60000); return d.toISOString().slice(0,16); };
+  $('details').innerHTML = '<div class="tablewrap"><table><thead><tr><th>From</th><th>Message</th><th>Fill in</th></tr></thead><tbody>' +
+    missing.map(r => '<tr data-id="' + esc(r.id) + '"><td>' + esc(r.sender) + '<br><span class="hint mono">' + esc(fmtD(r.sentAt) + ' ' + fmtT(r.sentAt)) + '</span></td>' +
+      '<td class="msg">' + esc(r.text) + '</td><td><div class="fix">' +
+      '<select aria-label="From" id="f_' + esc(r.id) + '">' + opts.replace('City…', 'From…').replace('<option>' + esc(r.from || S.settings.home) + '</option>', '<option selected>' + esc(r.from || S.settings.home) + '</option>') + '</select>' +
+      '<select aria-label="To" id="d_' + esc(r.id) + '">' + opts.replace('City…', 'To…').replace('<option>' + esc(r.dest || '#') + '</option>', '<option selected>' + esc(r.dest) + '</option>') + '</select>' +
+      '<input aria-label="Time" type="datetime-local" id="t_' + esc(r.id) + '" value="' + (r.when ? local(r.when) : '') + '">' +
+      '<button class="btn small primary" type="button" data-fix="' + esc(r.id) + '">Save</button>' +
+      '<button class="btn small" type="button" data-ignore="' + esc(r.id) + '">Not a ride</button></div></td></tr>').join('') +
+    '</tbody></table></div>';
+}
+
+function renderRows(){
+  const p = S.plan, now = Date.now();
+  const tripOf = {}; p.trips.forEach(t => t.riders.forEach(r => tripOf[r.id] = t));
+  const rows = [
+    ...p.requests.map(r => ({ r, kind: R.isIncomplete(r, S.settings.home) ? 'Rider · incomplete' : 'Rider', cls: R.isIncomplete(r, S.settings.home) ? 'red' : '' })),
+    ...p.drivers.map(r => ({ r, kind: 'Driver offer', cls: '' })),
+    ...(p.cancelled || []).map(r => ({ r, kind: 'Cancelled', cls: '' }))
+  ].sort((a,b) => b.r.sentAt - a.r.sentAt);
+  $('rows').innerHTML = rows.length ? rows.map(({r, kind, cls}) =>
+    '<tr><td class="mono">' + esc(fmtD(r.sentAt)) + '<br>' + esc(fmtT(r.sentAt)) + '</td><td>' + esc(r.sender) + (r.phone ? '<br>' + phoneLink(r) : '') + '</td>' +
+    '<td><span class="chip ' + cls + '">' + esc(kind) + '</span></td>' +
+    '<td>' + esc((r.from || S.settings.home) + ' → ' + (r.dest || '?')) + '</td>' +
+    '<td class="mono">' + (r.when ? esc(fmtD(r.when) + ' ' + fmtT(r.when)) : '?') + '</td><td class="mono">' + r.seats + '</td>' +
+    '<td class="msg">' + esc(r.text) + '</td></tr>').join('') :
+    '<tr><td colspan="7" class="hint">No ride messages found yet.</td></tr>';
+}
+
+function renderAlerts(){
+  $('alerts').innerHTML = S.alerts.length ? S.alerts.slice(0, 30).map(a =>
+    '<div class="alert ' + (a.level === 'urgent' ? 'urgent' : '') + '"><time>' + esc(fmtD(a.at) + ' ' + fmtT(a.at)) + '</time><b>' + esc(a.title) + '</b><p>' + esc(a.body) + '</p></div>').join('') :
+    '<p>Pickup reminders and new-request alerts show up here.</p>';
+}
+
+// ---------- settings form ----------
+function fillSettings(force){
+  const s = S.settings, f = $('settingsForm');
+  if (!force && f.contains(document.activeElement)) return;
+  $('s_home').innerHTML = S.cityNames.map(c => '<option' + (c === s.home ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
+  $('s_cap').value = s.cap; $('s_min').value = s.minPeople || 3; $('s_win').value = s.win; $('s_lead').value = s.lead;
+  $('s_onway').checked = s.sameDest === false;
+  $('liveOnly').hidden = !S.live;
+  if (S.live) { $('s_notifySelf').checked = !!s.notifySelf; $('s_alertNew').checked = !!s.alertNewRequests; $('s_ntfy').value = s.ntfyTopic || ''; }
+}
+$('settingsForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const b = { home: $('s_home').value, cap: +$('s_cap').value, minPeople: +$('s_min').value, win: +$('s_win').value, lead: +$('s_lead').value, sameDest: !$('s_onway').checked };
+  if (b.minPeople > b.cap) { toast({ title: 'Minimum is more than your seats', body: 'Set "Worth it from" to ' + b.cap + ' or less.' }); return; }
+  if (S.live) { Object.assign(b, { notifySelf: $('s_notifySelf').checked, alertNewRequests: $('s_alertNew').checked, ntfyTopic: $('s_ntfy').value });
+    await api('api/settings', b); }
+  else { Object.assign(S.settings, b); store.set('settings', S.settings); offRecompute(); }
+  $('savedNote').textContent = 'Saved.'; setTimeout(() => $('savedNote').textContent = '', 3000);
+});
+
+// ---------- your trips ----------
+async function addTrip(t){
+  if (!t.dest || !t.when) { toast({ title: 'Pick where you are going and when you leave', body: 'Both are needed to plan the trip.' }); return; }
+  if ((t.from || S.settings.home) === t.dest) { toast({ title: 'From and To are the same city', body: 'Pick where you start and where you are going.' }); return; }
+  if (S.live) await api('api/mytrips', t);
+  else { S.settings.myTrips = (S.settings.myTrips || []).concat({ id: 't' + Date.now().toString(36), from: t.from, dest: t.dest, when: t.when }); store.set('settings', S.settings); offRecompute(); }
+}
+
+// ---------- clicks ----------
+document.addEventListener('click', async e => {
+  const c = e.target.closest('[data-copy]');
+  if (c) { const txt = c.getAttribute('data-copy');
+    try { await navigator.clipboard.writeText(txt); c.textContent = 'Copied'; } catch { c.textContent = 'Copy blocked · select text in the chat preview'; }
+    setTimeout(() => c.textContent = c.getAttribute('data-label') || 'Copy message', 2000); return; }
+  const p = e.target.closest('[data-post]');
+  if (p) { p.disabled = true; const r = await api('api/post-plan', { tripId: p.getAttribute('data-post') }); p.textContent = r && r.ok ? 'Posted to ' + r.group : 'Not posted'; return; }
+  const fx = e.target.closest('[data-fix]');
+  if (fx) { const id = fx.getAttribute('data-fix'); const dest = $('d_' + id).value, from = $('f_' + id).value, t = $('t_' + id).value;
+    if (!dest || !t) { toast({ title: 'Pick where they are going and a time', body: 'Both are needed to put this rider in a car.' }); return; }
+    if (from === dest) { toast({ title: 'From and To are the same city', body: 'Pick where the rider starts and where they are going.' }); return; }
+    await setOverride(id, { dest, from, when: new Date(t).getTime() }); return; }
+  const kp = e.target.closest('[data-keep]');
+  if (kp) { const t = S.plan.trips.find(x => x.id === kp.getAttribute('data-keep')); if (t) await addTrip({ from: t.from, dest: t.dest, when: t.depart }); return; }
+  const rm = e.target.closest('[data-rm]');
+  if (rm) { const id = rm.getAttribute('data-rm');
+    if (S.live) await api('api/mytrips', { remove: id });
+    else { S.settings.myTrips = S.settings.myTrips.filter(t => t.id !== id); store.set('settings', S.settings); offRecompute(); }
+    return; }
+  const ig = e.target.closest('[data-ignore]');
+  if (ig) { await setOverride(ig.getAttribute('data-ignore'), { ignore: true }); return; }
+});
+$('testAlert').addEventListener('click', async () => {
+  if (S.live) await api('api/test-alert', {});
+  else notify('Test alert', 'Alerts are working. You will get one like this before you leave for each trip.', 'urgent');
+});
+async function setOverride(id, o){
+  detailsKey = '';
+  if (S.live) await api('api/override', Object.assign({ id }, o));
+  else { off.overrides[id] = o; store.set('overrides', off.overrides); offRecompute(); }
+}
+async function api(path, body){
+  try { const r = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const j = await r.json(); if (!r.ok) toast({ title: 'Something went wrong', body: j.error || r.statusText }); return j; }
+  catch (e) { toast({ title: 'The server did not answer', body: 'Check that the terminal running "npm start" is still open.' }); return null; }
+}
+
+// =============== LIVE MODE (served by server.js) ===============
+function renderSourceLive(){
+  const wa = S.wa || {};
+  const watched = S.settings.groups || [];
+  const st = { connected:['ok','Linked to WhatsApp' + (wa.me && wa.me.name ? ' as ' + wa.me.name : '')], scan:['amber','Scan to link WhatsApp'], reconnecting:['amber','Reconnecting…'], starting:['amber','Starting…'], logged_out:['red','Logged out. Restarting…'], error:['red','Could not start WhatsApp'] }[wa.status] || ['amber', wa.status];
+  let h = '<h2>WhatsApp</h2><div class="status-line"><span class="dot ' + st[0] + '"></span>' + esc(st[1]) + '</div>';
+  if (wa.status === 'scan' && wa.qr) h += '<p>On your phone: WhatsApp → Settings → Linked devices → Link a device, then scan.</p><img class="qr" alt="WhatsApp link QR code" src="' + esc(wa.qr) + '">';
+  if (wa.status === 'connected') {
+    h += '<label class="label" for="inv">Join a group by invite link</label><div class="row-btns"><input id="inv" type="text" style="flex:1" value="' + esc(MY_INVITE) + '"><button class="btn small primary" type="button" id="joinBtn">Join &amp; watch</button></div>';
+    h += '<div class="label">Groups to watch for ride requests</div><div class="groups">' +
+      ((wa.groups || []).map(g => '<label class="check"><input type="checkbox" data-group="' + esc(g.id) + '"' + (watched.includes(g.id) ? ' checked' : '') + '> ' + esc(g.name) + ' <span class="hint">' + g.size + '</span></label>').join('') || '<p>Loading your groups…</p>') + '</div>';
+    h += '<p>' + (S.messageCount || 0) + ' messages read from watched groups. New messages are read the moment they arrive.</p>';
+  }
+  const box = $('source');
+  if (box.contains(document.activeElement) && document.activeElement.id === 'inv') return;
+  box.innerHTML = h;
+  const jb = $('joinBtn'); if (jb) jb.onclick = async () => { jb.disabled = true; const r = await api('api/join', { link: $('inv').value }); jb.disabled = false; if (r && r.ok) toast({ title: 'Joined ' + r.name, body: 'Watching it for ride requests now.' }); };
+  box.querySelectorAll('[data-group]').forEach(cb => cb.onchange = () => {
+    const groups = [...box.querySelectorAll('[data-group]:checked')].map(x => x.getAttribute('data-group'));
+    api('api/settings', { groups });
+  });
+}
+function startLive(first){
+  S = Object.assign(S, first);
+  const es = new EventSource('events');
+  es.addEventListener('state', e => { const d = JSON.parse(e.data); Object.assign(S, d); renderSourceLive(); fillSettings(); render(); });
+  es.addEventListener('alert', e => { const a = JSON.parse(e.data); S.alerts.unshift(a); toast(a); renderAlerts(); });
+  es.addEventListener('tick', () => render());
+  renderSourceLive(); fillSettings(true); render();
+}
+
+// =============== OFFLINE MODE (exported chat, runs in the browser) ===============
+function sampleChat(){
+  const now = Date.now(), r5 = ms => Math.ceil(ms / 300000) * 300000;
+  const pad = n => String(n).padStart(2, '0');
+  const stamp = ms => { const d = new Date(ms); let h = d.getHours(), ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
+    return (d.getMonth()+1) + '/' + d.getDate() + '/' + String(d.getFullYear()).slice(2) + ', ' + h + ':' + pad(d.getMinutes()) + ' ' + ap; };
+  const when = (ms, sent) => { const d = new Date(ms), s = new Date(sent); let h = d.getHours(), ap = h >= 12 ? 'pm' : 'am'; h = h % 12 || 12;
+    const same = d.toDateString() === s.toDateString(); const nx = new Date(s); nx.setDate(nx.getDate()+1);
+    return (same ? 'today' : d.toDateString() === nx.toDateString() ? 'tomorrow' : 'on ' + d.toLocaleDateString('en-US',{weekday:'long'})) + ' at ' + h + ':' + pad(d.getMinutes()) + ap; };
+  const A = r5(now + 30*60000);
+  const tmr = new Date(now); tmr.setDate(tmr.getDate() + 1); tmr.setHours(9, 30, 0, 0);
+  const m = (ago, who, text) => stamp(now - ago*60000) + ' - ' + who + ': ' + text;
+  const S0 = now;
+  return [
+    m(150,'Priya Shah','Hey! need a ride to Austin ' + when(A+20*60000, S0-150*60000) + ', pickup at LBJ Student Center'),
+    m(141,'Marcus Lee','anyone going to austin ' + when(A, S0-141*60000) + '? me and my roommate'),
+    m(133,'Jordan Diaz','I\'m driving to Austin ' + when(A+10*60000, S0-133*60000) + ', have 4 seats. Leaving from Bobcat Stadium'),
+    m(120,'Aisha Khan','Need a ride to Kyle ' + when(A+25*60000, S0-120*60000) + ' pls 🙏'),
+    m(112,'Ethan Brooks','looking for a ride to San Antonio tomorrow 9am'),
+    m(104,'Sofia Ramirez','anyone heading to SA tmrw morning? 9:30ish'),
+    m(96,'Daniel Kim','need a lift to AUS airport ' + when(A+120*60000, S0-96*60000) + ', flight is 2 hrs later'),
+    m(88,'Hannah Wu','going to New Braunfels tomorrow around 10am? need ride, 2 of us'),
+    m(80,'Liam O\'Connor','Can someone drop me to Houston on Friday at 2pm'),
+    m(71,'Priya Shah','👍'),
+    m(64,'Noah Patel','need ride to Round Rock ' + when(A+200*60000, S0-64*60000)),
+    m(55,'Grace Liu','I can take 3 people to San Antonio tomorrow at 9:15am, leaving from Bobcat Village'),
+    m(47,'Ethan Brooks','nvm found a ride'),
+    m(38,'Mia Torres','Need a ride to the airport ' + when(A+135*60000, S0-38*60000)),
+    m(33,'Aisha Khan','Need a ride to Austin ' + when(A+15*60000, S0-33*60000) + ' pls'),
+    m(22,'Omar Farouk','ride to Austin?'),
+    m(9,'Kevin Ortiz','need ride back from Austin to San Marcos ' + when(A+300*60000, S0-9*60000))
+  ].join('\n');
+}
+
+function offRecompute(newIds){
+  const msgs = R.parseExport(off.chat);
+  const a = R.analyze(msgs, off.cities, off.overrides);
+  const now = Date.now(), st = S.settings;
+  st.myTrips = (st.myTrips || []).filter(t => t.when > now - 12*3600000);
+  const F = R.findRides(a.requests, st.myTrips, { seats: st.cap, home: st.home, now, win: st.win, detour: st.detour, minPeople: st.minPeople || 3, sameDest: st.sameDest !== false });
+  S.plan = { requests: a.requests, drivers: a.drivers, cancelled: a.cancelled, mine: F.mine, worth: F.worth, small: F.small, tooBig: F.tooBig, trips: [...F.mine, ...F.worth, ...F.small] };
+  off.msgIds = new Set(msgs.map(x => x.id));
+  const fresh = R.groupAlerts(S.plan, off.announced); store.set('announced', off.announced);
+  if (newIds) { newIds.forEach(id => { const msg = msgs.find(x => x.id === id); if (msg) announce(msg); }); fresh.forEach(al => notify(al.title, al.body)); }
+  checkReminders(); render();
+  return msgs;
+}
+function announce(msg){
+  const al = R.alertFor(msg, S.plan, S.settings.home);
+  if (al && al.kind === 'details') notify(al.title, al.body);
+}
+function notify(title, body, level){
+  const a = { id: Date.now() + Math.random().toString(36).slice(2,6), at: Date.now(), title, body, level: level || 'info' };
+  S.alerts.unshift(a); S.alerts.splice(60); if (!S.live) store.set('alerts', S.alerts);
+  toast(a); renderAlerts();
+}
+function checkReminders(){
+  if (S.live) return;
+  const lead = S.settings.lead * 60000, now = Date.now();
+  for (const t of S.plan.mine || []) {
+    if (!t.riders.length || now < t.depart - lead || now > t.depart + 10*60000) continue;
+    const fresh = t.riders.filter(r => !off.alerted[r.id]);
+    if (!fresh.length) continue;
+    fresh.forEach(r => off.alerted[r.id] = 1); store.set('alerted', off.alerted);
+    notify('Leave ' + until(t.depart) + ': ' + (t.local ? t.route : t.fromLabel + ' → ' + t.route), R.driverBrief(t), 'urgent');
+  }
+}
+
+function renderSourceOffline(){
+  $('source').innerHTML =
+    '<h2>Chat messages</h2>' +
+    '<p>In WhatsApp open the group → ⋮ (or the group name on iPhone) → More → Export chat → Without media. Upload the .txt here, or paste it. The sample below is made-up so you can see how it works.</p>' +
+    '<div class="row-btns"><label class="btn small primary" for="file">Upload export (.txt)</label><input id="file" type="file" accept=".txt,text/plain" hidden>' +
+    '<button class="btn small" type="button" id="sampleBtn">Load sample</button><button class="btn small" type="button" id="clearBtn">Clear</button></div>' +
+    '<textarea id="chat" aria-label="Chat export text" spellcheck="false"></textarea>' +
+    '<button class="btn small" type="button" id="readBtn">Read pasted chat</button>' +
+    '<div class="label">Add a new message as it comes in</div>' +
+    '<form class="form" id="addForm"><label>Name<input id="a_name" type="text" placeholder="Sam Rivera" required></label>' +
+    '<label>Sent<input id="a_time" type="datetime-local"></label>' +
+    '<label class="full">Message<input id="a_text" type="text" placeholder="need a ride to Austin at 6pm" required></label>' +
+    '<div class="full"><button class="btn small primary" type="submit">Add message</button></div></form>' +
+    '<p class="hint">For hands-free live reading, run the included server: it links to your WhatsApp and watches the group itself.</p>';
+  $('chat').value = off.chat;
+  const load = (text, label) => { off.chat = text; store.set('chat', text); $('chat').value = text; const ms = offRecompute();
+    notify(label, ms.length + ' messages read → ' + S.plan.requests.length + ' ride requests, ' + S.plan.worth.length + ' rides with ' + S.settings.minPeople + '+ people.'); };
+  $('file').onchange = e => { const f = e.target.files[0]; if (!f) return; const rd = new FileReader(); rd.onload = () => load(String(rd.result), 'Imported ' + f.name); rd.readAsText(f); };
+  $('readBtn').onclick = () => load($('chat').value, 'Chat read');
+  $('sampleBtn').onclick = () => { off.alerted = {}; store.set('alerted', {}); off.announced = {}; off.overrides = {}; store.set('overrides', {}); detailsKey=''; load(sampleChat(), 'Sample chat loaded'); };
+  $('clearBtn').onclick = () => { off.chat = ''; store.set('chat', ''); $('chat').value = ''; offRecompute(); };
+  const nowLocal = () => { const d = new Date(Date.now() - new Date().getTimezoneOffset()*60000); return d.toISOString().slice(0,16); };
+  $('a_time').value = nowLocal();
+  $('addForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const d = new Date($('a_time').value || Date.now()); let h = d.getHours(), ap = h >= 12 ? 'PM' : 'AM'; h = h % 12 || 12;
+    const line = (d.getMonth()+1) + '/' + d.getDate() + '/' + String(d.getFullYear()).slice(2) + ', ' + h + ':' + String(d.getMinutes()).padStart(2,'0') + ' ' + ap + ' - ' + $('a_name').value.trim().replace(/:/g,'') + ': ' + $('a_text').value.trim();
+    const before = new Set(off.msgIds || []);
+    off.chat = (off.chat ? off.chat.replace(/\s+$/,'') + '\n' : '') + line; store.set('chat', off.chat); $('chat').value = off.chat;
+    const msgs = R.parseExport(off.chat);
+    offRecompute(msgs.filter(x => !before.has(x.id)).map(x => x.id));
+    $('a_text').value = ''; $('a_time').value = nowLocal();
+  });
+}
+function startOffline(){
+  off = { chat: store.get('chat', null), overrides: store.get('overrides', {}), alerted: store.get('alerted', {}), announced: store.get('announced', {}), cities: R.buildCities() };
+  S.settings = Object.assign(S.settings, store.get('settings', {}));
+  S.cityNames = R.cityNames(off.cities);
+  S.alerts = store.get('alerts', []);
+  if (!off.chat) { off.chat = sampleChat(); off.alerted = {}; }
+  renderSourceOffline(); fillSettings(true); offRecompute();
+}
+
+// ---------- boot ----------
+setInterval(() => { $('clock').textContent = new Date().toLocaleTimeString([], { hour:'numeric', minute:'2-digit', second:'2-digit' }); }, 1000);
+setInterval(() => { if (!S.live) checkReminders(); render(); }, 15000);
+$('clock').textContent = new Date().toLocaleTimeString([], { hour:'numeric', minute:'2-digit' });
+fetch('api/state').then(r => r.ok ? r.json() : Promise.reject()).then(d => d && d.live ? startLive(d) : startOffline()).catch(startOffline);
+})();
+</script>
