@@ -36,7 +36,7 @@ You drive one car and decide yourself whether a trip is worth it. The app finds 
 - **Alerts:** you get one alert when a group reaches your minimum, with names, numbers and times, and another when someone new joins it.
 - **I'm taking this:** marks the ride as yours. New matching passengers are added to it, and you get a reminder before you leave with who to pick up.
 - **Smaller groups** (below your minimum) are listed with **Take anyway**. No alerts for them.
-- **Cities on the way** (e.g. Kyle on the way to Austin) are only grouped if you tick that option.
+- **Along the route, both directions** (on by default): riders whose start and destination are both on your route are grouped, in the right order. For example, San Marcos → Kyle → Buda → Austin can pick someone up in Kyle, drop someone in Kyle, and reuse that seat. Each rider is matched to when the car passes their city. Untick it in settings to group only riders going between the same two cities.
 - Drivers offering rides in the group are listed but never used.
 
 ## Cities

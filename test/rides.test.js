@@ -104,18 +104,46 @@ console.log('All ride parsing and pooling checks passed (' + trips.length + ' ca
     ['15:20', 'P', 'Need ride from Austin to SM at 7 PM'], ['15:21', 'Tanu', 'need ride from Austin to SM at 7:15 PM, 2 of us'], ['15:33', 'Ishant', 'need ride from Austin to San Marcos at 9pm'],
     ['15:34', 'Dave', 'need ride to Austin 5:05pm']].map(([hm, s, x], i) => ({ id: 'w' + i, ts: at(hm), sender: s, text: x }));
   const a = R.analyze(msgs, R.buildCities());
-  const F = R.findRides(a.requests, [], { seats: 3, now: at('15:45'), minPeople: 3 });
+  const F = R.findRides(a.requests, [], { seats: 3, now: at('15:45'), minPeople: 3, onTheWay: false });
   const names = t => t.riders.map(r => r.sender).sort().join(',');
   assert.deepStrictEqual(F.worth.map(names), ['Asha,Dave,zzz', 'P,Tanu']);                       // Kyle is not "same place"
   assert.ok(F.small.some(t => names(t) === 'Kyle') && F.small.some(t => names(t) === 'Ishant'));
-  const F4 = R.findRides(a.requests, [], { seats: 4, now: at('15:45'), minPeople: 4 });
+  const F4 = R.findRides(a.requests, [], { seats: 4, now: at('15:45'), minPeople: 4, onTheWay: false });
   assert.strictEqual(F4.worth.length, 0, 'nobody reaches 4 people');
-  const Fw = R.findRides(a.requests, [], { seats: 4, now: at('15:45'), minPeople: 4, sameDest: false });
+  const Fw = R.findRides(a.requests, [], { seats: 4, now: at('15:45'), minPeople: 4, onTheWay: true });
   assert.deepStrictEqual(Fw.worth.map(names), ['Asha,Dave,Kyle,zzz'], 'with "cities on the way", Kyle joins');
   const ann = {};
   assert.strictEqual(R.groupAlerts(F, ann).length, 2);
   assert.strictEqual(R.groupAlerts(F, ann).length, 0, 'no repeat alerts');
-  const mine = R.findRides(a.requests, [{ id: 'T', from: 'San Marcos', dest: 'Austin', when: at('17:00') }], { seats: 3, now: at('15:45') });
+  const mine = R.findRides(a.requests, [{ id: 'T', from: 'San Marcos', dest: 'Austin', when: at('17:00') }], { seats: 3, now: at('15:45'), onTheWay: false });
   assert.deepStrictEqual(mine.mine.map(names), ['Asha,Dave,zzz'], 'a trip you take gets the matching passengers');
   console.log('Rides worth taking: OK');
+}
+
+// Along the route, both directions: pickups and drop-offs on the way, seats reused, opposite direction kept apart
+{
+  const at = hm => new Date('2026-09-27T' + hm + ':00').getTime();
+  const msgs = [['14:00', 'Asha', 'need ride to Austin at 5pm'], ['14:01', 'Kiran', 'need ride from Kyle to Austin at 5:15pm'],
+    ['14:02', 'Maya', 'need a ride to Kyle at 5pm'], ['14:03', 'Dev', 'need ride from Buda to Austin 5:20pm'],
+    ['14:04', 'Nora', 'need ride from New Braunfels to Austin at 4:45pm'], ['14:05', 'Ravi', 'need ride from Austin to SM at 7pm'],
+    ['14:06', 'Tina', 'need ride from Austin to Kyle at 7:05pm'], ['14:07', 'Om', 'need ride from Buda to San Marcos at 7:20pm'],
+    ['14:08', 'Zed', 'need ride from Austin to San Antonio at 5pm'], ['14:09', 'Late', 'need ride from Kyle to Austin at 9pm']]
+    .map(([hm, s, x], i) => ({ id: 'c' + i, ts: at(hm), sender: s, text: x }));
+  const a = R.analyze(msgs, R.buildCities());
+  const F = R.findRides(a.requests, [], { seats: 3, now: at('14:30'), minPeople: 3 });
+  const names = t => t.riders.map(r => r.sender).sort().join(',');
+  const south = F.worth.find(t => t.riders.some(r => r.sender === 'Asha'));
+  assert.strictEqual(south.path, 'New Braunfels → San Marcos → Kyle → Austin');
+  assert.strictEqual(names(south), 'Asha,Kiran,Maya,Nora');          // Maya gets out at Kyle, Kiran gets in there
+  assert.strictEqual(south.peak, 3);
+  const north = F.worth.find(t => t.riders.some(r => r.sender === 'Ravi'));
+  assert.strictEqual(north.path, 'Austin → Buda → Kyle → San Marcos');
+  assert.strictEqual(names(north), 'Om,Ravi,Tina');
+  assert.ok(![...F.worth, ...F.small].some(t => t.riders.some(r => r.sender === 'Zed') && t.riders.length > 1), 'opposite direction stays apart');
+  assert.ok(F.small.some(t => names(t) === 'Late'), 'different time stays apart');
+  const F4 = R.findRides(a.requests, [], { seats: 4, now: at('14:30'), minPeople: 3 });
+  assert.ok(F4.worth.some(t => names(t) === 'Asha,Dev,Kiran,Maya,Nora'), 'with 4 seats Dev from Buda fits too');
+  const T = R.findRides(a.requests, [{ id: 'T', from: 'San Marcos', dest: 'Austin', when: at('17:00') }], { seats: 3, now: at('14:30') });
+  assert.ok(T.mine[0].riders.some(r => r.sender === 'Kiran') && T.mine[0].riders.some(r => r.sender === 'Maya'), 'your trip picks up on the way');
+  console.log('Along the route: ' + south.path + ' (' + names(south) + ') | ' + north.path + ' (' + names(north) + ')');
 }

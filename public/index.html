@@ -92,7 +92,9 @@ button,input,select,textarea{font:inherit;color:inherit}
 .legs dd{margin:0}
 .who{display:flex;flex-direction:column;gap:2px}
 .who span{display:flex;gap:8px;justify-content:space-between}
-.who .nm{display:flex;flex-direction:column;gap:0}
+.who .nm{display:flex;flex-direction:column;gap:0;flex:1 1 9em;min-width:9em}
+.who > span{flex-wrap:wrap;column-gap:10px}
+.who em{margin-left:auto;text-align:right}
 .ph{font-family:var(--mono);font-size:12px;color:var(--ok);text-decoration:none;white-space:nowrap}
 .ph:hover{text-decoration:underline}
 .who em{font-style:normal;color:var(--muted);font-size:12.5px;font-family:var(--mono);white-space:nowrap}
@@ -206,7 +208,7 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
           <label>Same time means within (min)<input id="s_win" type="number" min="5" max="180" step="5"></label>
           <label>Alert before you leave (min)<input id="s_lead" type="number" min="1" max="180"></label>
           <label class="full">Riders start from (if they don't say)<select id="s_home"></select></label>
-          <label class="full check"><input id="s_onway" type="checkbox"> Also group riders going to cities on the way (e.g. Kyle on the way to Austin)</label>
+          <label class="full check"><input id="s_onway" type="checkbox"> Pick up and drop off along the way, both directions (e.g. Kyle and Buda between San Marcos and Austin)</label>
           <div class="full" id="liveOnly" hidden>
             <div class="form">
               <label class="full check"><input id="s_alertNew" type="checkbox"> Alert me when a group reaches the minimum</label>
@@ -238,7 +240,7 @@ const store = { get(k, d){ try { const v = localStorage.getItem('rd.' + k); retu
                 set(k, v){ try { localStorage.setItem('rd.' + k, JSON.stringify(v)); } catch {} } };
 const MY_INVITE = '';   // optional: prefill the invite box with your group's link (keep it out of public code)
 
-let S = { live:false, wa:null, settings:{ win:30, cap:3, minPeople:3, sameDest:true, lead:15, home:'San Marcos', detour:25, myTrips:[] }, plan:{requests:[],drivers:[],mine:[],worth:[],small:[],trips:[],tooBig:[],cancelled:[]}, alerts:[], cityNames:[] };
+let S = { live:false, wa:null, settings:{ win:30, cap:3, minPeople:3, onTheWay:true, lead:15, home:'San Marcos', detour:25, myTrips:[] }, plan:{requests:[],drivers:[],mine:[],worth:[],small:[],trips:[],tooBig:[],cancelled:[]}, alerts:[], cityNames:[] };
 let off = null;           // offline-mode data
 let sound = false, audio = null;
 
@@ -289,6 +291,7 @@ const letter = i => String.fromCharCode(65 + (i % 26)) + (i >= 26 ? Math.floor(i
 // Phone number shown as a link that opens a WhatsApp chat with that person
 const phoneLink = r => r && r.phone ? ' <a class="ph" target="_blank" rel="noopener" title="Message on WhatsApp" href="https://wa.me/' + esc(r.phone) + '">' + esc(R.fmtPhone(r.phone)) + '</a>' : (S.live ? ' <span class="hint">number hidden by WhatsApp</span>' : '');
 const numbersText = t => t.riders.map(r => r.sender + ': ' + (r.phone ? R.fmtPhone(r.phone) : 'number hidden')).join('\n');
+const people = n => n + (n === 1 ? ' person' : ' people');
 const localInput = ms => { const d = new Date(ms - new Date(ms).getTimezoneOffset()*60000); return d.toISOString().slice(0,16); };
 
 // ---------- rendering ----------
@@ -304,10 +307,10 @@ function render(){
   $('mode').className = 'mode' + (S.live && S.wa && S.wa.status === 'connected' ? ' live' : '');
   $('mode').textContent = S.live ? (S.wa && S.wa.status === 'connected' ? 'Live from WhatsApp' : 'Server running, WhatsApp not linked') : 'Offline · exported chat';
   const n = [...mine, ...worth].sort((a,b) => a.depart - b.depart).find(t => t.depart > now - 60000);
-  $('next').innerHTML = n ? 'Next: <b>' + esc(n.local ? n.route : n.fromLabel + ' → ' + n.route) + '</b> ' + esc(until(n.depart)) + ' · ' + n.seats + ' people' : '';
+  $('next').innerHTML = n ? 'Next: <b>' + esc(n.path) + '</b> ' + esc(until(n.depart)) + ' · ' + people(n.seats) : '';
   $('worthTitle').textContent = 'Rides worth taking (' + settings.minPeople + '+ people)';
-  $('winLabel').textContent = 'same place · within ' + settings.win + ' min · ' + settings.cap + ' seats';
-  $('tripHint').textContent = worth.length ? 'Passengers going to the same place at about the same time.' : '';
+  $('winLabel').textContent = (settings.onTheWay !== false ? 'along the route' : 'same place') + ' · within ' + settings.win + ' min · ' + settings.cap + ' seats';
+  $('tripHint').textContent = worth.length ? (settings.onTheWay !== false ? 'Passengers along the same route at about the same time. People can get in and out on the way.' : 'Passengers going to the same place at about the same time.') : '';
   $('smallHint').textContent = 'Fewer than ' + settings.minPeople + ' people so far. They move up when more people ask.';
 
   $('summary').innerHTML =
@@ -336,21 +339,25 @@ function tripCard(t, isPast){
   const chips = [];
   chips.push(soon ? '<span class="chip amber">Leaves ' + esc(until(t.depart)) + '</span>' : '<span class="chip">' + esc(until(t.depart)) + '</span>');
   if (t.mine) chips.push('<span class="chip ok">You’re taking this</span>');
-  else if (t.seats >= t.cap) chips.push('<span class="chip ok">Full car</span>');
+  else if ((t.peak != null ? t.peak : t.seats) >= t.cap) chips.push('<span class="chip ok">Full car</span>');
+  if (t.peak != null && t.peak < t.seats) chips.push('<span class="chip ok">' + t.seats + ' riders, seats reused on the way</span>');
   if (t.clash) chips.push('<span class="chip red">' + esc(t.clash) + '</span>');
-  if (t.drops.length > 1) chips.push('<span class="chip">' + t.drops.length + ' drop-offs</span>');
+  if ((t.stopOrder || []).length > 2) chips.push('<span class="chip">' + (t.stopOrder.length - 1) + ' stops</span>');
+  else if (t.drops.length > 1) chips.push('<span class="chip">' + t.drops.length + ' drop-offs</span>');
   if (t.miles) chips.push('<span class="chip">≈ ' + Math.round(t.miles) + ' mi</span>');
-  const seats = Array.from({length:t.cap}, (_,i) => '<i class="' + (i < t.seats ? 'f' : '') + '"></i>').join('');
-  const route = t.local ? esc(t.route) : t.drops.map(d => esc(d.name)).join('<span class="arr"> → </span>');
+  const inCar = t.peak != null ? t.peak : t.seats;
+  const seats = Array.from({length:t.cap}, (_,i) => '<i class="' + (i < inCar ? 'f' : '') + '"></i>').join('');
+  const stops = t.stopOrder || null;
+  const route = t.local ? esc(t.route) : (stops ? stops.slice(1) : t.drops.map(d => d.name)).map(esc).join('<span class="arr"> → </span>');
   const pick = t.stops.map(g => '<span>' + esc(g[0].pickupLabel || g[0].pickup || 'Spot not given') + '<em>' + esc(g.map(r => r.sender.split(' ')[0]).join(', ')) + '</em></span>').join('');
-  const riders = t.riders.length ? t.riders.map(r => '<span><span class="nm">' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + phoneLink(r) + '</span><em>' + (t.drops.length > 1 ? esc(r.dest) + ' · ' : '') + 'wants ' + esc(fmtT(r.when)) + '</em></span>').join('') : '<span class="hint">No passengers yet.</span>';
+  const riders = t.riders.length ? t.riders.map(r => '<span><span class="nm">' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + phoneLink(r) + '</span><em>' + ((t.stopOrder || []).length > 2 || t.drops.length > 1 ? esc((r.from || S.settings.home) + ' → ' + r.dest) + ' · ' : '') + 'wants ' + esc(fmtT(r.when)) + '</em></span>').join('') : '<span class="hint">No passengers yet.</span>';
   const offer = R.offerMessage(t);
   return '<article class="trip' + (isPast ? ' past' : '') + (soon ? ' soon' : '') + '">' +
-    '<div class="sign"><div class="row"><span class="tab">' + t.seats + ' PEOPLE</span><span class="from">' + (t.local ? 'local ride' : 'from ' + esc(t.fromLabel)) + '</span>' +
+    '<div class="sign"><div class="row"><span class="tab">' + esc(people(t.seats).toUpperCase()) + '</span><span class="from">' + (t.local ? 'local ride' : 'from ' + esc(stops ? stops[0] : t.fromLabel)) + '</span>' +
     '<div class="time">' + esc(fmtT(t.depart)) + '<small>' + esc(fmtD(t.depart)) + '</small></div></div>' +
     '<div class="route">' + route + '</div></div>' +
     '<div class="body"><div class="chips">' + chips.join('') + '</div>' +
-    '<div class="row-btns"><span class="label">Seats ' + t.seats + '/' + t.cap + '</span><span class="seatbar">' + seats + '</span></div>' +
+    '<div class="row-btns"><span class="label">' + (t.peak != null && t.peak < t.seats ? 'At most ' + t.peak + '/' + t.cap + ' in the car at once' : 'Seats ' + inCar + '/' + t.cap) + '</span><span class="seatbar">' + seats + '</span></div>' +
     '<dl class="legs">' + (t.riders.length ? '<dt>Pickup</dt><dd class="who">' + pick + '</dd>' : '') + '<dt>Riders</dt><dd class="who">' + riders + '</dd></dl>' +
     '<div class="actions">' +
     (isPast ? '' : t.mine ? '<button class="btn small" type="button" data-rm="' + esc(t.mine) + '">Not going</button>'
@@ -364,9 +371,9 @@ function tripCard(t, isPast){
 function renderSmall(small){
   const big = S.plan.tooBig || [];
   $('skipped').innerHTML = (small.length || big.length) ? '<div class="tablewrap"><table><thead><tr><th>People</th><th>Route</th><th>Time</th><th>Riders</th><th></th></tr></thead><tbody>' +
-    small.map(t => '<tr><td class="mono">' + t.seats + '/' + t.cap + '</td><td>' + esc(t.local ? t.route : t.fromLabel + ' → ' + t.route) + '</td>' +
+    small.map(t => '<tr><td class="mono">' + t.seats + '</td><td>' + esc(t.path) + '</td>' +
       '<td class="mono">' + esc(fmtD(t.depart) + ' ' + fmtT(t.depart)) + '</td>' +
-      '<td>' + t.riders.map(r => esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + phoneLink(r)).join('<br>') + '</td>' +
+      '<td>' + t.riders.map(r => esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + ((t.stopOrder || []).length > 2 ? ' <span class="hint">' + esc((r.from || S.settings.home) + ' → ' + r.dest) + '</span>' : '') + phoneLink(r)).join('<br>') + '</td>' +
       '<td><button class="btn small" type="button" data-keep="' + esc(t.id) + '">Take anyway</button></td></tr>').join('') +
     big.map(r => '<tr><td class="mono">' + r.seats + '</td><td>' + esc((r.from || S.settings.home) + ' → ' + r.dest) + '</td><td class="mono">' + esc(fmtD(r.when) + ' ' + fmtT(r.when)) + '</td><td>' + esc(r.sender) + phoneLink(r) + '</td><td class="hint">More people than your seats</td></tr>').join('') +
     '</tbody></table></div>' : '<div class="empty">No other ride requests right now.</div>';
@@ -420,13 +427,13 @@ function fillSettings(force){
   if (!force && f.contains(document.activeElement)) return;
   $('s_home').innerHTML = S.cityNames.map(c => '<option' + (c === s.home ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
   $('s_cap').value = s.cap; $('s_min').value = s.minPeople || 3; $('s_win').value = s.win; $('s_lead').value = s.lead;
-  $('s_onway').checked = s.sameDest === false;
+  $('s_onway').checked = s.onTheWay !== false;
   $('liveOnly').hidden = !S.live;
   if (S.live) { $('s_notifySelf').checked = !!s.notifySelf; $('s_alertNew').checked = !!s.alertNewRequests; $('s_ntfy').value = s.ntfyTopic || ''; }
 }
 $('settingsForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const b = { home: $('s_home').value, cap: +$('s_cap').value, minPeople: +$('s_min').value, win: +$('s_win').value, lead: +$('s_lead').value, sameDest: !$('s_onway').checked };
+  const b = { home: $('s_home').value, cap: +$('s_cap').value, minPeople: +$('s_min').value, win: +$('s_win').value, lead: +$('s_lead').value, onTheWay: $('s_onway').checked };
   if (b.minPeople > b.cap) { toast({ title: 'Minimum is more than your seats', body: 'Set "Worth it from" to ' + b.cap + ' or less.' }); return; }
   if (S.live) { Object.assign(b, { notifySelf: $('s_notifySelf').checked, alertNewRequests: $('s_alertNew').checked, ntfyTopic: $('s_ntfy').value });
     await api('api/settings', b); }
@@ -540,6 +547,7 @@ function sampleChat(){
     m(47,'Ethan Brooks','nvm found a ride'),
     m(38,'Mia Torres','Need a ride to the airport ' + when(A+135*60000, S0-38*60000)),
     m(33,'Aisha Khan','Need a ride to Austin ' + when(A+15*60000, S0-33*60000) + ' pls'),
+    m(27,'Kiran Rao','need ride from Kyle to Austin ' + when(A+30*60000, S0-27*60000)),
     m(22,'Omar Farouk','ride to Austin?'),
     m(9,'Kevin Ortiz','need ride back from Austin to San Marcos ' + when(A+300*60000, S0-9*60000))
   ].join('\n');
@@ -550,7 +558,7 @@ function offRecompute(newIds){
   const a = R.analyze(msgs, off.cities, off.overrides);
   const now = Date.now(), st = S.settings;
   st.myTrips = (st.myTrips || []).filter(t => t.when > now - 12*3600000);
-  const F = R.findRides(a.requests, st.myTrips, { seats: st.cap, home: st.home, now, win: st.win, detour: st.detour, minPeople: st.minPeople || 3, sameDest: st.sameDest !== false });
+  const F = R.findRides(a.requests, st.myTrips, { seats: st.cap, home: st.home, now, win: st.win, detour: st.detour, minPeople: st.minPeople || 3, onTheWay: st.onTheWay !== false });
   S.plan = { requests: a.requests, drivers: a.drivers, cancelled: a.cancelled, mine: F.mine, worth: F.worth, small: F.small, tooBig: F.tooBig, trips: [...F.mine, ...F.worth, ...F.small] };
   off.msgIds = new Set(msgs.map(x => x.id));
   const fresh = R.groupAlerts(S.plan, off.announced); store.set('announced', off.announced);
@@ -616,6 +624,7 @@ function renderSourceOffline(){
 function startOffline(){
   off = { chat: store.get('chat', null), overrides: store.get('overrides', {}), alerted: store.get('alerted', {}), announced: store.get('announced', {}), cities: R.buildCities() };
   S.settings = Object.assign(S.settings, store.get('settings', {}));
+  if (S.settings.onTheWay === undefined) S.settings.onTheWay = true; delete S.settings.sameDest;
   S.cityNames = R.cityNames(off.cities);
   S.alerts = store.get('alerts', []);
   if (!off.chat) { off.chat = sampleChat(); off.alerted = {}; }

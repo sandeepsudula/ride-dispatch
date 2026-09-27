@@ -34,7 +34,7 @@ const settings = Object.assign({
   win: 30, lead: 15, home: 'San Marcos', detour: 25,
   cap: 3,                // seats in your car for passengers
   minPeople: 3,          // a ride is worth taking from this many passengers
-  sameDest: true,        // only group riders going to exactly the same place
+  onTheWay: true,        // group riders whose start and destination are along the same route, both directions
   myTrips: [],           // trips you decided to take: {id, from, dest, when}
   extraCities: '',       // your own additions, one per line, e.g. "Bastrop"
   notifySelf: true,      // send alerts to your own "Message yourself" chat
@@ -70,6 +70,8 @@ let alerted = load('alerted.json', {});
 let announced = load('announced.json', {});   // rider ids already reported in a group alert
 let primed = false;     // riderId -> true once a pickup reminder went out
 delete settings.cities;  // older versions saved a frozen copy of the city list; always use the current one
+if (settings.onTheWay === undefined) settings.onTheWay = true;   // group along the route by default
+delete settings.sameDest;
 const cityList = () => R.DEFAULT_CITIES + '\n' + (settings.extraCities || '');
 let cities = R.buildCities(cityList());
 
@@ -92,7 +94,7 @@ function recompute() {
   const a = R.analyze(watched.map(m => ({ ...m, fromMe: isMine(m) })), cities, overrides);
   const now = Date.now();
   settings.myTrips = (settings.myTrips || []).filter(t => t.when > now - 12 * 3600000);
-  const F = R.findRides(a.requests, settings.myTrips, { seats: settings.cap, home: settings.home, now, win: settings.win, detour: settings.detour, minPeople: settings.minPeople, sameDest: settings.sameDest });
+  const F = R.findRides(a.requests, settings.myTrips, { seats: settings.cap, home: settings.home, now, win: settings.win, detour: settings.detour, minPeople: settings.minPeople, onTheWay: settings.onTheWay !== false });
   plan = { requests: a.requests, drivers: a.drivers, cancelled: a.cancelled, mine: F.mine, worth: F.worth, small: F.small, tooBig: F.tooBig,
     trips: [...F.mine, ...F.worth, ...F.small] };
   // New groups that reached your minimum, and new passengers joining them
@@ -294,7 +296,7 @@ app.post('/api/settings', (req, res) => {
   if (Array.isArray(b.groups)) { settings.groups = b.groups; setTimeout(() => loadMembers(settings.groups), 1000); }
   if (typeof b.home === 'string' && b.home.trim()) settings.home = b.home.trim();
   if (b.minPeople != null && +b.minPeople >= 1) settings.minPeople = +b.minPeople;
-  if (typeof b.sameDest === 'boolean') settings.sameDest = b.sameDest;
+  if (typeof b.onTheWay === 'boolean') settings.onTheWay = b.onTheWay;
   ['win', 'cap', 'lead', 'detour'].forEach(k => { if (b[k] != null && !isNaN(+b[k])) settings[k] = +b[k]; });
   ['notifySelf', 'alertNewRequests', 'alertSkipped'].forEach(k => { if (typeof b[k] === 'boolean') settings[k] = b[k]; });
   if (typeof b.ntfyTopic === 'string') settings.ntfyTopic = b.ntfyTopic.trim().replace(/[^A-Za-z0-9_-]/g, '');
