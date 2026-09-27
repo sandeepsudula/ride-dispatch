@@ -11,6 +11,15 @@ const pino = require('pino');
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('baileys');
 const R = require('./lib/rides');
 
+// WhatsApp drops the connection now and then (network change, phone offline, Mac waking up). The library can
+// throw from background work when that happens; keep running so the reconnect logic below can do its job.
+const HICCUP = /Connection Closed|Connection Failure|Connection Lost|Timed Out|Stream Errored|rate-overlimit|Precondition Required|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i;
+process.on('unhandledRejection', e => console.error('WhatsApp hiccup, still running:', (e && e.message) || e));
+process.on('uncaughtException', e => {
+  if (HICCUP.test((e && e.message) || '')) return console.error('WhatsApp hiccup, still running:', e.message);
+  console.error(e); process.exit(1);   // a real bug: stop so it gets noticed (pm2 restarts it)
+});
+
 const PORT = +process.env.PORT || 3000;
 const DATA = process.env.DATA_DIR || path.join(__dirname, 'data');   // on a cloud server, point this at a persistent volume
 fs.mkdirSync(DATA, { recursive: true });

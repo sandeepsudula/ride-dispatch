@@ -48,7 +48,6 @@ Texas cities around San Marcos, plus the AUS, SAT, IAH and DFW airports, are bui
 - `server.js`: WhatsApp connection (Baileys), alerts, dashboard API
 - `lib/rides.js`: message understanding and grouping. Shared by the server and the offline page.
 - `public/index.html`: the dashboard
-- `public/index.html`: the dashboard
 - `build-offline.js`: `npm run build` writes `dist/ride-dispatch.html`, a single offline file
 - `test/rides.test.js`: `npm test`
 - `data/`: your saved login session, messages and settings. Delete `data/auth` to unlink.
