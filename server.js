@@ -35,6 +35,7 @@ const settings = Object.assign({
   cap: 3,                // seats in your car for passengers
   minPeople: 3,          // a ride is worth taking from this many passengers
   onTheWay: true,        // group riders whose start and destination are along the same route, both directions
+  radius: 12,            // trip search: pick up / drop off within this many miles of your start and end
   myTrips: [],           // trips you decided to take: {id, from, dest, when}
   searches: [],          // saved searches (your availability): {id, from, dest, start, end}
   extraCities: '',       // your own additions, one per line, e.g. "Bastrop"
@@ -101,7 +102,7 @@ function recompute() {
     trips: [...F.mine, ...F.worth, ...F.small] };
   // Saved searches: your trip + the window you're free
   settings.searches = (settings.searches || []).filter(q => q.end > now);
-  const opts = { seats: settings.cap, home: settings.home, now, win: settings.win, detour: settings.detour, onTheWay: settings.onTheWay !== false };
+  const opts = { seats: settings.cap, home: settings.home, now, win: settings.win, detour: settings.detour, onTheWay: settings.onTheWay !== false, radius: settings.radius != null ? settings.radius : 12 };
   plan.searches = settings.searches.map(q => ({ q, result: R.searchRides(a.requests, q, opts) }));
   // New groups that reached your minimum, new passengers joining them, and matches for saved searches
   const fresh = [...R.groupAlerts(plan, announced), ...R.searchAlerts(plan.searches, announced, settings.minPeople)];
@@ -349,7 +350,7 @@ app.post('/api/settings', (req, res) => {
   if (typeof b.home === 'string' && b.home.trim()) settings.home = b.home.trim();
   if (b.minPeople != null && +b.minPeople >= 1) settings.minPeople = +b.minPeople;
   if (typeof b.onTheWay === 'boolean') settings.onTheWay = b.onTheWay;
-  ['win', 'cap', 'lead', 'detour'].forEach(k => { if (b[k] != null && !isNaN(+b[k])) settings[k] = +b[k]; });
+  ['win', 'cap', 'lead', 'detour', 'radius'].forEach(k => { if (b[k] != null && !isNaN(+b[k])) settings[k] = +b[k]; });
   ['notifySelf', 'alertNewRequests', 'alertSkipped'].forEach(k => { if (typeof b[k] === 'boolean') settings[k] = b[k]; });
   if (typeof b.ntfyTopic === 'string') settings.ntfyTopic = b.ntfyTopic.trim().replace(/[^A-Za-z0-9_-]/g, '');
   if (typeof b.extraCities === 'string') { settings.extraCities = b.extraCities; cities = R.buildCities(cityList()); }

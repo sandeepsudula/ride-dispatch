@@ -113,6 +113,8 @@ button,input,select,textarea{font:inherit;color:inherit}
 .leg b{color:var(--ink);font-weight:700}
 .chip.sug{background:var(--amber-bg);color:var(--amber);border-color:transparent}
 .mytrips{display:flex;flex-direction:column;gap:6px}
+.legline{font-size:13.5px;line-height:1.6}
+.legline .arr{color:var(--muted);font-family:var(--mono);font-size:12px;white-space:nowrap}
 .search{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:12px}
 .sform{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:end}
 .sform label{display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--muted);font-weight:600}
@@ -246,6 +248,7 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
           <label>Worth it from (people)<input id="s_min" type="number" min="1" max="8"></label>
           <label>Same time means within (min)<input id="s_win" type="number" min="5" max="180" step="5"></label>
           <label>Alert before you leave (min)<input id="s_lead" type="number" min="1" max="180"></label>
+          <label class="full">Search: pick up / drop off within (miles) of your start and end<input id="s_radius" type="number" min="0" max="40"></label>
           <label class="full">Riders start from (if they don't say)<select id="s_home"></select></label>
           <label class="full check"><input id="s_onway" type="checkbox"> Pick up and drop off along the way, both directions (e.g. Kyle and Buda between San Marcos and Austin)</label>
           <div class="full" id="liveOnly" hidden>
@@ -279,7 +282,7 @@ const store = { get(k, d){ try { const v = localStorage.getItem('rd.' + k); retu
                 set(k, v){ try { localStorage.setItem('rd.' + k, JSON.stringify(v)); } catch {} } };
 const MY_INVITE = '';   // optional: prefill the invite box with your group's link (keep it out of public code)
 
-let S = { live:false, wa:null, settings:{ win:30, cap:3, minPeople:3, onTheWay:true, lead:15, home:'San Marcos', detour:25, myTrips:[] }, plan:{requests:[],drivers:[],mine:[],worth:[],small:[],trips:[],tooBig:[],cancelled:[]}, alerts:[], cityNames:[] };
+let S = { live:false, wa:null, settings:{ win:30, cap:3, minPeople:3, onTheWay:true, radius:12, lead:15, home:'San Marcos', detour:25, myTrips:[] }, plan:{requests:[],drivers:[],mine:[],worth:[],small:[],trips:[],tooBig:[],cancelled:[]}, alerts:[], cityNames:[] };
 let off = null;           // offline-mode data
 let sound = false, audio = null;
 
@@ -393,13 +396,16 @@ function tripCard(t, isPast){
   const pick = t.stops.map(g => '<span>' + esc(g[0].pickupLabel || g[0].pickup || 'Spot not given') + '<em>' + esc(g.map(r => r.sender.split(' ')[0]).join(', ')) + '</em></span>').join('');
   const riders = t.riders.length ? t.riders.map(r => '<span><span class="nm">' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + phoneLink(r) + '</span><em>' + ((t.stopOrder || []).length > 2 || t.drops.length > 1 ? esc((r.from || S.settings.home) + ' → ' + r.dest) + ' · ' : '') + 'wants ' + esc(fmtT(r.when)) + '</em></span>').join('') : '<span class="hint">No passengers yet.</span>';
   const offer = R.offerMessage(t);
+  const legs = t.legs && t.legs.length > 1 ? t.legs.map((l, i) => (i ? '<span class="arr"> → ' + (l.mi - t.legs[i-1].mi) + ' mi → </span>' : '') + esc(l.city)).join('') : '';
+  const lead = (t.leadIn ? 'Start: drive ' + t.leadIn.mi + ' mi from ' + esc(t.leadIn.from) + ' to ' + esc(t.leadIn.to) + '. ' : '') + (t.leadOut ? 'Then ' + t.leadOut.mi + ' mi on to ' + esc(t.leadOut.to) + '.' : '');
+  const routeRow = legs ? '<dt>Route</dt><dd class="legline">' + (lead ? '<span class="hint">' + lead + '</span><br>' : '') + legs + ' <span class="hint">· ' + Math.round((t.legs[t.legs.length-1].mi) + ((t.leadIn || {}).mi || 0) + ((t.leadOut || {}).mi || 0)) + ' mi total</span></dd>' : '';
   return '<article class="trip' + (isPast ? ' past' : '') + (soon ? ' soon' : '') + '">' +
     '<div class="sign"><div class="row"><span class="tab">' + esc(people(t.seats).toUpperCase()) + '</span><span class="from">' + (t.local ? 'local ride' : 'from ' + esc(stops ? stops[0] : t.fromLabel)) + '</span>' +
     '<div class="time">' + esc(fmtT(t.depart)) + '<small>' + esc(fmtD(t.depart)) + '</small></div></div>' +
     '<div class="route">' + route + '</div></div>' +
     '<div class="body"><div class="chips">' + chips.join('') + '</div>' +
     '<div class="row-btns"><span class="label">' + (t.peak != null && t.peak < t.seats ? 'At most ' + t.peak + '/' + t.cap + ' in the car at once' : 'Seats ' + inCar + '/' + t.cap) + '</span><span class="seatbar">' + seats + '</span></div>' +
-    '<dl class="legs">' + (t.riders.length ? '<dt>Pickup</dt><dd class="who">' + pick + '</dd>' : '') + '<dt>Riders</dt><dd class="who">' + riders + '</dd></dl>' +
+    '<dl class="legs">' + routeRow + (t.riders.length ? '<dt>Pickup</dt><dd class="who">' + pick + '</dd>' : '') + '<dt>Riders</dt><dd class="who">' + riders + '</dd></dl>' +
     '<div class="actions">' +
     (isPast ? '' : t.mine ? '<button class="btn small" type="button" data-rm="' + esc(t.mine) + '">Not going</button>'
                           : '<button class="btn small primary" type="button" data-keep="' + esc(t.id) + '">I’m taking this</button>') +
@@ -469,12 +475,13 @@ function fillSettings(force){
   $('s_home').innerHTML = S.cityNames.map(c => '<option' + (c === s.home ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
   $('s_cap').value = s.cap; $('s_min').value = s.minPeople || 3; $('s_win').value = s.win; $('s_lead').value = s.lead;
   $('s_onway').checked = s.onTheWay !== false;
+  $('s_radius').value = s.radius != null ? s.radius : 12;
   $('liveOnly').hidden = !S.live;
   if (S.live) { $('s_notifySelf').checked = !!s.notifySelf; $('s_alertNew').checked = !!s.alertNewRequests; $('s_ntfy').value = s.ntfyTopic || ''; }
 }
 $('settingsForm').addEventListener('submit', async e => {
   e.preventDefault();
-  const b = { home: $('s_home').value, cap: +$('s_cap').value, minPeople: +$('s_min').value, win: +$('s_win').value, lead: +$('s_lead').value, onTheWay: $('s_onway').checked };
+  const b = { home: $('s_home').value, cap: +$('s_cap').value, minPeople: +$('s_min').value, win: +$('s_win').value, lead: +$('s_lead').value, onTheWay: $('s_onway').checked, radius: +$('s_radius').value };
   if (b.minPeople > b.cap) { toast({ title: 'Minimum is more than your seats', body: 'Set "Worth it from" to ' + b.cap + ' or less.' }); return; }
   if (S.live) { Object.assign(b, { notifySelf: $('s_notifySelf').checked, alertNewRequests: $('s_alertNew').checked, ntfyTopic: $('s_ntfy').value });
     await api('api/settings', b); }
@@ -505,15 +512,15 @@ function renderSearch(){
   $('savedSearches').innerHTML = saved.length ? '<span class="label">Saved:</span>' + saved.map(q => '<span class="chip ok"><a href="#" data-showq="' + esc(q.id) + '" style="color:inherit;text-decoration:none">' + esc(q.from + ' → ' + q.dest + ' · ' + fmtD(q.start) + ' ' + fmtT(q.start) + '–' + fmtT(q.end)) + '</a><button type="button" data-rmq="' + esc(q.id) + '" aria-label="Remove saved search">×</button></span>').join('') : '';
   if (!Q) { $('searchOut').hidden = true; return; }
   const st = S.settings;
-  const res = R.searchRides(S.plan.requests, Q, { seats: st.cap, home: st.home, now: Date.now(), win: st.win, detour: st.detour, onTheWay: st.onTheWay !== false });
+  const res = R.searchRides(S.plan.requests, Q, { seats: st.cap, home: st.home, now: Date.now(), win: st.win, detour: st.detour, onTheWay: st.onTheWay !== false, radius: st.radius != null ? st.radius : 12 });
   searchOpts = res.options;
   $('searchOut').hidden = false;
   $('sResTitle').textContent = res.options.length ? 'Best times to leave' : ((res.partial || []).length ? 'No full matches yet' : 'No passengers yet for this trip');
   $('sResHint').textContent = Q.from + ' → ' + Q.dest + ' · ' + fmtD(Q.start) + ' ' + fmtT(Q.start) + '–' + fmtT(Q.end) + (res.options.length ? ' · most passengers first' : ' · save it to get an alert when someone asks');
   $('searchRes').innerHTML = res.options.map(t => tripCard(t)).join('');
   const onWay = res.matches.filter(r => r.where !== 'Same trip').length;
-  $('searchAll').innerHTML = (res.matches.length ? '<div class="label" style="margin:10px 0 6px">Passengers for this trip in your window (' + res.matches.length + (onWay ? ', ' + onWay + ' on the way' : '') + ')</div><div class="tablewrap"><table><thead><tr><th>Rider</th><th>Where</th><th>Wants</th><th>You’d leave ' + esc(Q.from) + '</th></tr></thead><tbody>' +
-    res.matches.map(r => '<tr><td>' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + '<br>' + phoneLink(r) + '</td><td>' + (r.where === 'Same trip' ? esc((r.from || st.home) + ' → ' + r.dest) : '<span class="chip ok">On the way</span><br>' + esc(r.where)) + '</td><td class="mono">' + esc(fmtT(r.when)) + '</td><td class="mono">' + esc(fmtT(r.ideal)) + '</td></tr>').join('') + '</tbody></table></div>' : '') +
+  $('searchAll').innerHTML = (res.matches.length ? '<div class="label" style="margin:10px 0 6px">Passengers for this trip in your window (' + res.matches.length + (onWay ? ', ' + onWay + ' on the way' : '') + ')</div><div class="tablewrap"><table><thead><tr><th>Rider</th><th>Where</th><th>Distance</th><th>Wants</th><th>You’d leave ' + esc(Q.from) + '</th></tr></thead><tbody>' +
+    res.matches.map(r => '<tr><td>' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + '<br>' + phoneLink(r) + '</td><td>' + (r.where === 'Same trip' ? esc((r.from || st.home) + ' → ' + r.dest) : '<span class="chip ok">On the way</span><br>' + esc(r.where)) + '</td><td class="mono">' + (r.tripMi != null ? Math.round(r.tripMi) + ' mi trip' : '') + (r.fromYouMi ? '<br><span class="hint">pickup ' + Math.round(r.fromYouMi) + ' mi from ' + esc(Q.from) + '</span>' : '') + '</td><td class="mono">' + esc(fmtT(r.when)) + '</td><td class="mono">' + esc(fmtT(r.ideal)) + '</td></tr>').join('') + '</tbody></table></div>' : '') +
     ((res.partial || []).length ? '<div class="label" style="margin:14px 0 6px">Partly on your way (' + res.partial.length + '): their trip overlaps yours, so ask them first</div><div class="tablewrap"><table><thead><tr><th>Rider</th><th>What you could do</th><th>Wants</th><th>Around</th></tr></thead><tbody>' +
     res.partial.map(r => '<tr><td>' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + '<br>' + phoneLink(r) + '</td><td class="msg">' + esc(r.note) + '</td><td class="mono">' + esc(fmtT(r.when)) + '</td><td class="mono">' + esc(fmtT(r.ideal)) + '</td></tr>').join('') + '</tbody></table></div>' : '');
 }
@@ -663,6 +670,8 @@ function sampleChat(){
     m(38,'Mia Torres','Need a ride to the airport ' + when(A+135*60000, S0-38*60000)),
     m(33,'Aisha Khan','Need a ride to Austin ' + when(A+15*60000, S0-33*60000) + ' pls'),
     m(27,'Kiran Rao','need ride from Kyle to Austin ' + when(A+30*60000, S0-27*60000)),
+    m(24,'Nikhil Rao','need ride from North Austin to San Marcos ' + when(A+200*60000, S0-24*60000)),
+    m(21,'Divya','need a ride from the Domain to txst ' + when(A+195*60000, S0-21*60000)),
     m(22,'Omar Farouk','ride to Austin?'),
     m(9,'Kevin Ortiz','need ride back from Austin to San Marcos ' + when(A+300*60000, S0-9*60000))
   ].join('\n');
@@ -677,7 +686,7 @@ function offRecompute(newIds){
   S.plan = { requests: a.requests, drivers: a.drivers, cancelled: a.cancelled, mine: F.mine, worth: F.worth, small: F.small, tooBig: F.tooBig, trips: [...F.mine, ...F.worth, ...F.small] };
   off.msgIds = new Set(msgs.map(x => x.id));
   st.searches = (st.searches || []).filter(q => q.end > now);
-  const searches = st.searches.map(q => ({ q, result: R.searchRides(a.requests, q, { seats: st.cap, home: st.home, now, win: st.win, detour: st.detour, onTheWay: st.onTheWay !== false }) }));
+  const searches = st.searches.map(q => ({ q, result: R.searchRides(a.requests, q, { seats: st.cap, home: st.home, now, win: st.win, detour: st.detour, onTheWay: st.onTheWay !== false, radius: st.radius != null ? st.radius : 12 }) }));
   const fresh = [...R.groupAlerts(S.plan, off.announced), ...R.searchAlerts(searches, off.announced, st.minPeople || 3)]; store.set('announced', off.announced);
   if (newIds) { newIds.forEach(id => { const msg = msgs.find(x => x.id === id); if (msg) announce(msg); }); fresh.forEach(al => notify(al.title, al.body)); }
   checkReminders(); render();

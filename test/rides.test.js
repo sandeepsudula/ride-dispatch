@@ -185,3 +185,25 @@ console.log('All ride parsing and pooling checks passed (' + trips.length + ' ca
   assert.ok(!res.matches.concat(res.partial).some(r => ['Opp', 'Hou', 'Wim'].includes(r.sender)));
   console.log('Search on the way: OK');
 }
+
+// Areas of Austin: North Austin riders group with Austin riders; search picks them up near your start
+{
+  const at = hm => new Date('2026-09-27T' + hm + ':00').getTime();
+  const msgs = [['14:00', 'Nik', 'need ride from north austin to san marcos at 6pm'], ['14:01', 'Dee', 'need ride from Austin to SM at 6:15pm'],
+    ['14:02', 'Tom', 'need ride from the domain to txst at 6pm'], ['14:05', 'Opp', 'need ride to Austin at 6pm']]
+    .map(([hm, s, x], i) => ({ id: 'a' + i, ts: at(hm), sender: s, text: x }));
+  const a = R.analyze(msgs, R.buildCities());
+  assert.strictEqual(a.requests.find(r => r.sender === 'Nik').from, 'North Austin');
+  assert.strictEqual(a.requests.find(r => r.sender === 'Tom').from, 'The Domain');
+  const F = R.findRides(a.requests, [], { seats: 3, now: at('14:30'), minPeople: 3 });
+  const g = F.worth[0];
+  assert.deepStrictEqual(g.riders.map(r => r.sender).sort(), ['Dee', 'Nik', 'Tom']);
+  assert.deepStrictEqual(g.legs.map(l => l.city), ['The Domain', 'North Austin', 'Austin', 'San Marcos']);
+  assert.ok(g.legs[3].mi > 40 && g.legs[3].mi < 60, 'about 50 miles total');
+  const S = R.searchRides(a.requests, { from: 'Austin', dest: 'San Marcos', start: at('17:30'), end: at('19:00') }, { seats: 3, now: at('14:30') });
+  assert.ok(S.options[0].riders.length === 3 && S.options[0].leadIn && S.options[0].leadIn.to === 'The Domain');
+  assert.strictEqual(Math.round(S.matches.find(r => r.sender === 'Nik').fromYouMi), 11);
+  const S0 = R.searchRides(a.requests, { from: 'Austin', dest: 'San Marcos', start: at('17:30'), end: at('19:00') }, { seats: 3, now: at('14:30'), radius: 0 });
+  assert.ok(!S0.matches.some(r => r.sender === 'Nik'), 'radius 0 = only riders starting exactly where you do');
+  console.log('North Austin: ' + g.legs.map(l => l.city + ' (' + l.mi + ' mi)').join(' → '));
+}
