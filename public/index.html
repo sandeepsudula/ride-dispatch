@@ -332,7 +332,7 @@ function until(ms){
 const letter = i => String.fromCharCode(65 + (i % 26)) + (i >= 26 ? Math.floor(i/26) : '');
 
 // Phone number shown as a link that opens a WhatsApp chat with that person
-const phoneLink = r => r && r.phone ? ' <a class="ph" target="_blank" rel="noopener" title="Message on WhatsApp" href="https://wa.me/' + esc(r.phone) + '">' + esc(R.fmtPhone(r.phone)) + '</a>' : (S.live ? ' <span class="hint">number hidden by WhatsApp</span>' : '');
+const phoneLink = r => r && r.phone && R.nameIsPhone(r) ? ' <a class="ph" target="_blank" rel="noopener" title="Message on WhatsApp" href="https://wa.me/' + esc(r.phone) + '">Message</a>' : r && r.phone ? ' <a class="ph" target="_blank" rel="noopener" title="Message on WhatsApp" href="https://wa.me/' + esc(r.phone) + '">' + esc(R.fmtPhone(r.phone)) + '</a>' : (S.live ? ' <span class="hint">number hidden by WhatsApp</span>' : '');
 const numbersText = t => t.riders.map(r => r.sender + ': ' + (r.phone ? R.fmtPhone(r.phone) : 'number hidden')).join('\n');
 const people = n => n + (n === 1 ? ' person' : ' people');
 const localInput = ms => { const d = new Date(ms - new Date(ms).getTimezoneOffset()*60000); return d.toISOString().slice(0,16); };
