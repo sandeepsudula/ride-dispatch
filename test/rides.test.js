@@ -207,3 +207,24 @@ console.log('All ride parsing and pooling checks passed (' + trips.length + ' ca
   assert.ok(!S0.matches.some(r => r.sender === 'Nik'), 'radius 0 = only riders starting exactly where you do');
   console.log('North Austin: ' + g.legs.map(l => l.city + ' (' + l.mi + ' mi)').join(' → '));
 }
+
+// The same person posting several times counts once; different people with the same name stay separate
+{
+  const at = hm => new Date('2026-09-27T' + hm + ':00').getTime();
+  const msgs = [
+    { id: 'd1', ts: at('14:00'), sender: 'Priya', senderJid: '15125550101@s.whatsapp.net', text: 'need ride to Austin at 5pm' },
+    { id: 'd2', ts: at('14:30'), sender: 'Priya', senderJid: '15125550101@s.whatsapp.net', text: 'anyone? need ride to austin 5pm' },
+    { id: 'd3', ts: at('14:40'), sender: 'Priya S', senderJid: '15125550101@s.whatsapp.net', text: 'need a ride to North Austin at 5:30pm' },   // correction, new name
+    { id: 'd4', ts: at('14:45'), sender: '+1 (512) 555-0101', text: 'need ride from Austin to San Marcos at 10pm' },                        // her way back (imported, shown by number)
+    { id: 'd5', ts: at('14:50'), sender: 'Rahul', senderJid: '15125550202@s.whatsapp.net', text: 'need ride to Austin at 5pm' },
+    { id: 'd6', ts: at('14:51'), sender: 'Rahul', senderJid: '15125550303@s.whatsapp.net', text: 'need ride to Austin at 5:10pm' },          // a different Rahul
+  ];
+  const a = R.analyze(msgs, R.buildCities());
+  const priya = a.requests.filter(r => r.person === '15125550101');
+  assert.strictEqual(priya.length, 2, 'Priya: one trip there (latest correction) + one back');
+  assert.ok(priya.some(r => r.dest === 'North Austin') && priya.some(r => r.dest === 'San Marcos'));
+  assert.strictEqual(a.requests.filter(r => r.sender === 'Rahul').length, 2, 'two different Rahuls');
+  const F = R.findRides(a.requests, [], { seats: 4, now: at('15:00'), minPeople: 3 });
+  for (const t of [...F.worth, ...F.small]) assert.strictEqual(new Set(t.riders.map(r => r.person)).size, t.riders.length, 'nobody twice in one car');
+  console.log('Duplicates: ' + a.requests.length + ' requests from ' + msgs.length + ' messages; groups have no repeats');
+}
