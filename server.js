@@ -99,8 +99,9 @@ function broadcast(type, data) {
 const snapshot = () => ({ live: true, cityNames: R.cityNames(cities), wa: { status: wa.status, qr: wa.qr, pairCode: wa.status === 'scan' ? wa.pairCode : null, me: wa.me, groups: wa.groups }, settings: { ...settings, phoneAuth: undefined },
   phone: { on: typeof hasPassword === 'function' && hasPassword(), fromEnv: !!(process.env.DASHBOARD_PASSWORD || '').trim(), port: PORT, addresses: typeof addresses === 'function' ? addresses() : [] }, plan, alerts: alertsLog.slice(0, 30), now: Date.now(), messageCount: messages.filter(m => settings.groups.includes(m.group)).length });
 
+let quietOnce = false;   // set before a recompute that shouldn't alert (e.g. after importing old messages)
 function recompute() {
-  const watched = messages.filter(m => settings.groups.includes(m.group) && m.ts > Date.now() - 3 * 86400000)
+  const watched = messages.filter(m => settings.groups.includes(m.group) && m.ts > Date.now() - 7 * 86400000)
     .map(m => (!m.senderPhone && lidPhones[m.senderJid] ? { ...m, senderPhone: lidPhones[m.senderJid] } : m));
   const a = R.analyze(watched.map(m => ({ ...m, fromMe: isMine(m) })), cities, overrides);
   const now = Date.now();
@@ -115,7 +116,8 @@ function recompute() {
   // New groups that reached your minimum, new passengers joining them, and matches for saved searches
   const fresh = [...R.groupAlerts(plan, announced), ...R.searchAlerts(plan.searches, announced, settings.minPeople)];
   save('announced.json', announced);
-  if (primed && settings.alertNewRequests) fresh.forEach(al => notify(al.title, al.body, { tripId: al.tripId }));
+  if (primed && !quietOnce && settings.alertNewRequests) fresh.forEach(al => notify(al.title, al.body, { tripId: al.tripId }));
+  quietOnce = false;
   primed = true;   // on startup, groups that already exist are remembered without alerting
   broadcast('state', snapshot());
 }
@@ -402,6 +404,53 @@ app.post('/api/mytrips', (req, res) => {
     settings.myTrips.push({ id: 't' + Date.now().toString(36), from: b.from || settings.home, dest: b.dest, when: +b.when });
   }
   save('settings.json', settings); recompute(); res.json({ ok: true });
+});
+
+// Import a WhatsApp "Export chat" file (.txt, or the .zip WhatsApp makes on some phones) into a watched group.
+// The file comes as raw bytes (the JSON parser skips it); login is checked like every other request.
+const zlib = require('zlib');
+function textFromUpload(buf) {
+  if (buf.length > 4 && buf.readUInt32LE(0) === 0x04034b50) {           // a .zip: find the chat .txt inside
+    let i = buf.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+    if (i < 0) throw new Error('That zip file looks damaged.');
+    let n = buf.readUInt16LE(i + 10), p = buf.readUInt32LE(i + 16);
+    for (let k = 0; k < n; k++) {
+      const method = buf.readUInt16LE(p + 10), size = buf.readUInt32LE(p + 20), nameLen = buf.readUInt16LE(p + 28),
+        extraLen = buf.readUInt16LE(p + 30), commentLen = buf.readUInt16LE(p + 32), local = buf.readUInt32LE(p + 42);
+      const name = buf.slice(p + 46, p + 46 + nameLen).toString();
+      if (/\.txt$/i.test(name)) {
+        const start = local + 30 + buf.readUInt16LE(local + 26) + buf.readUInt16LE(local + 28);
+        const data = buf.slice(start, start + size);
+        return (method === 8 ? zlib.inflateRawSync(data) : data).toString('utf8');
+      }
+      p += 46 + nameLen + extraLen + commentLen;
+    }
+    throw new Error('No chat text (.txt) found inside that zip.');
+  }
+  return buf.toString('utf8');
+}
+app.post('/api/import', express.raw({ type: '*/*', limit: '40mb' }), (req, res) => {
+  const group = String(req.query.group || '');
+  if (!settings.groups.includes(group)) return res.status(400).json({ error: 'Pick one of the groups you are watching first.' });
+  let text;
+  try { text = textFromUpload(req.body || Buffer.alloc(0)); } catch (e) { return res.status(400).json({ error: e.message }); }
+  const groupName = (wa.groups.find(g => g.id === group) || {}).name || group;
+  const parsed = R.parseExport(text, { group, groupName });
+  if (!parsed.length) return res.status(400).json({ error: 'No messages found. Use WhatsApp → the group → ⋮ → More → Export chat → Without media.' });
+  // skip messages already read live (same text within 2 minutes) or imported before
+  const known = new Set(messages.map(m => m.id));
+  const live = messages.filter(m => m.group === group);
+  const cutoff = Date.now() - 7 * 86400000;
+  let added = 0;
+  for (const m of parsed) {
+    if (m.ts < cutoff || known.has(m.id)) continue;
+    if (live.some(x => x.text.trim() === m.text.trim() && Math.abs(x.ts - m.ts) < 120000)) continue;
+    messages.push({ ...m, imported: true }); known.add(m.id); added++;
+  }
+  messages.sort((a, b) => a.ts - b.ts);
+  save('messages.json', messages);
+  quietOnce = true; recompute();
+  res.json({ ok: true, read: parsed.length, added, skippedOld: parsed.filter(m => m.ts < cutoff).length });
 });
 
 app.post('/api/searches', (req, res) => {

@@ -609,10 +609,29 @@ function renderSourceLive(){
       (watched.length ? '<p class="hint">Watching: ' + esc((wa.groups || []).filter(g => watched.includes(g.id)).map(g => g.name).join(', ') || watched.length + ' group(s)') + '</p>' : '') + '<div class="groups">' +
       ((wa.groups || []).filter(g => !gFilter || g.name.toLowerCase().includes(gFilter.toLowerCase()) || watched.includes(g.id)).sort((a, b) => (watched.includes(b.id) - watched.includes(a.id))).map(g => '<label class="check"><input type="checkbox" data-group="' + esc(g.id) + '"' + (watched.includes(g.id) ? ' checked' : '') + '> ' + esc(g.name) + ' <span class="hint">' + g.size + '</span></label>').join('') || '<p>Loading your groups…</p>') + '</div>';
     h += '<p>' + (S.messageCount || 0) + ' messages read from watched groups. New messages are read the moment they arrive.</p>';
+    const mine = (wa.groups || []).filter(g => watched.includes(g.id));
+    h += '<div class="label">Import earlier messages</div>' + (mine.length
+      ? '<p class="hint">In WhatsApp open the group → ⋮ → More → <b>Export chat</b> → <b>Without media</b>, and save the file (for example to Downloads or Drive). Then choose it here.</p>' +
+        '<div class="row-btns">' + (mine.length > 1 ? '<select id="impGroup">' + mine.map(g => '<option value="' + esc(g.id) + '">' + esc(g.name) + '</option>').join('') + '</select>' : '<input type="hidden" id="impGroup" value="' + esc(mine[0].id) + '">') +
+        '<label class="btn small primary" for="impFile">Choose export file</label><input id="impFile" type="file" accept=".txt,.zip,text/plain,application/zip" hidden></div><p class="hint" id="impNote"></p>'
+      : '<p class="hint">Tick your ride group above first.</p>');
   }
   const box = $('source');
   if (box.contains(document.activeElement) && ['inv', 'pairPhone', 'gFilter'].includes(document.activeElement.id)) return;
   box.innerHTML = h;
+  const imp = $('impFile'); if (imp) imp.onchange = async () => {
+    const f = imp.files[0]; if (!f) return;
+    $('impNote').textContent = 'Reading ' + f.name + '…';
+    try {
+      const r = await fetch('api/import?group=' + encodeURIComponent($('impGroup').value), { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: f });
+      if (r.status === 401) { location.href = 'login'; return; }
+      const j = await r.json();
+      if (!r.ok) { $('impNote').textContent = ''; toast({ title: 'Could not import', body: j.error || r.statusText }); return; }
+      const msg = j.added + ' earlier messages added (' + j.read + ' in the file' + (j.skippedOld ? ', ' + j.skippedOld + ' older than 7 days skipped' : '') + ').';
+      $('impNote').textContent = msg; toast({ title: 'Chat history imported', body: msg });
+    } catch (e) { $('impNote').textContent = ''; toast({ title: 'Could not import', body: 'The server did not answer. Is it still running?' }); }
+    imp.value = '';
+  };
   const pb = $('pairBtn'); if (pb) pb.onclick = async () => { pb.disabled = true; const r = await api('api/pair', { phone: $('pairPhone').value }); pb.disabled = false; if (r && r.ok) toast({ title: 'Your code: ' + r.code, body: 'WhatsApp → Linked devices → Link a device → Link with phone number instead.' }); };
   const gf = $('gFilter'); if (gf) gf.oninput = () => { gFilter = gf.value; const q = gFilter.toLowerCase(); box.querySelectorAll('.groups label').forEach(l => { l.hidden = !!q && !l.textContent.toLowerCase().includes(q) && !l.querySelector('input').checked; }); };
   const jb = $('joinBtn'); if (jb) jb.onclick = async () => {

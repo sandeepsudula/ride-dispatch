@@ -23,6 +23,7 @@ npm start
 2. On your phone: WhatsApp → Settings → Linked devices → Link a device, and scan the QR code.
 3. Tick your ride group under **Groups to watch**, or paste its invite link and click **Join & watch**.
 4. Under **Your settings**, set your seats and the minimum number of people that makes a ride worth it.
+5. Optional: to include requests posted before the app was linked, export the group (WhatsApp → the group → ⋮ → More → **Export chat** → Without media) and choose the file under **Import earlier messages**. The last 7 days are added; duplicates are skipped and no alerts are sent for them.
 
 Mac users can double-click `Start Ride Dispatch (Mac).command`; Windows users `Start Ride Dispatch (Windows).bat`. To keep it running with the terminal closed: `npx pm2 start "caffeinate -i node server.js" --name rides` (Mac).
 
