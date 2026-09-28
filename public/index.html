@@ -503,11 +503,14 @@ function renderSearch(){
   const res = R.searchRides(S.plan.requests, Q, { seats: st.cap, home: st.home, now: Date.now(), win: st.win, detour: st.detour, onTheWay: st.onTheWay !== false });
   searchOpts = res.options;
   $('searchOut').hidden = false;
-  $('sResTitle').textContent = res.options.length ? 'Best times to leave' : 'No passengers yet for this trip';
+  $('sResTitle').textContent = res.options.length ? 'Best times to leave' : ((res.partial || []).length ? 'No full matches yet' : 'No passengers yet for this trip');
   $('sResHint').textContent = Q.from + ' → ' + Q.dest + ' · ' + fmtD(Q.start) + ' ' + fmtT(Q.start) + '–' + fmtT(Q.end) + (res.options.length ? ' · most passengers first' : ' · save it to get an alert when someone asks');
   $('searchRes').innerHTML = res.options.map(t => tripCard(t)).join('');
-  $('searchAll').innerHTML = res.matches.length ? '<div class="label" style="margin:10px 0 6px">Everyone asking for this route in your window (' + res.matches.length + ')</div><div class="tablewrap"><table><thead><tr><th>Rider</th><th>Route</th><th>Wants</th><th>You’d leave ' + esc(Q.from) + '</th></tr></thead><tbody>' +
-    res.matches.map(r => '<tr><td>' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + '<br>' + phoneLink(r) + '</td><td>' + esc((r.from || st.home) + ' → ' + r.dest) + '</td><td class="mono">' + esc(fmtT(r.when)) + '</td><td class="mono">' + esc(fmtT(r.ideal)) + '</td></tr>').join('') + '</tbody></table></div>' : '';
+  const onWay = res.matches.filter(r => r.where !== 'Same trip').length;
+  $('searchAll').innerHTML = (res.matches.length ? '<div class="label" style="margin:10px 0 6px">Passengers for this trip in your window (' + res.matches.length + (onWay ? ', ' + onWay + ' on the way' : '') + ')</div><div class="tablewrap"><table><thead><tr><th>Rider</th><th>Where</th><th>Wants</th><th>You’d leave ' + esc(Q.from) + '</th></tr></thead><tbody>' +
+    res.matches.map(r => '<tr><td>' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + '<br>' + phoneLink(r) + '</td><td>' + (r.where === 'Same trip' ? esc((r.from || st.home) + ' → ' + r.dest) : '<span class="chip ok">On the way</span><br>' + esc(r.where)) + '</td><td class="mono">' + esc(fmtT(r.when)) + '</td><td class="mono">' + esc(fmtT(r.ideal)) + '</td></tr>').join('') + '</tbody></table></div>' : '') +
+    ((res.partial || []).length ? '<div class="label" style="margin:14px 0 6px">Partly on your way (' + res.partial.length + '): their trip overlaps yours, so ask them first</div><div class="tablewrap"><table><thead><tr><th>Rider</th><th>What you could do</th><th>Wants</th><th>Around</th></tr></thead><tbody>' +
+    res.partial.map(r => '<tr><td>' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + '<br>' + phoneLink(r) + '</td><td class="msg">' + esc(r.note) + '</td><td class="mono">' + esc(fmtT(r.when)) + '</td><td class="mono">' + esc(fmtT(r.ideal)) + '</td></tr>').join('') + '</tbody></table></div>' : '');
 }
 $('searchForm').addEventListener('submit', e => {
   e.preventDefault(); const q = readSearch();

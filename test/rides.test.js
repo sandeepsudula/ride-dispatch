@@ -168,3 +168,20 @@ console.log('All ride parsing and pooling checks passed (' + trips.length + ' ca
   assert.strictEqual(R.searchAlerts([{ q, result: res }], ann, 3).length, 0, 'no repeat alert');
   console.log('Search: ' + res.options.map(t => R.fmtTime(t.depart) + ' ' + t.path + ' (' + names(t) + ')').join(' | '));
 }
+
+// Search shows passengers on the way, and riders partly on the way
+{
+  const at = hm => new Date('2026-09-27T' + hm + ':00').getTime();
+  const msgs = [['14:00', 'Asha', 'need ride to Austin at 5pm'], ['14:01', 'Kiran', 'need ride from Kyle to Austin at 5:15pm'], ['14:02', 'Maya', 'need a ride to Kyle at 5pm'],
+    ['14:03', 'Bo', 'need ride from Kyle to Buda at 5:15pm'], ['14:04', 'Rocky', 'need ride from Kyle to Round Rock at 5:15pm'], ['14:05', 'Nina', 'need ride from New Braunfels to Austin at 4:40pm'],
+    ['14:06', 'Opp', 'need ride from Austin to Kyle at 5pm'], ['14:07', 'Hou', 'need ride to Houston at 5pm'], ['14:08', 'Wim', 'need ride to Wimberley at 5pm']]
+    .map(([hm, s, x], i) => ({ id: 'p' + i, ts: at(hm), sender: s, text: x }));
+  const a = R.analyze(msgs, R.buildCities());
+  const res = R.searchRides(a.requests, { from: 'San Marcos', dest: 'Austin', start: at('16:30'), end: at('18:00') }, { seats: 3, now: at('14:30'), onTheWay: false });
+  const w = n => (res.matches.find(r => r.sender === n) || {}).where;
+  assert.strictEqual(w('Asha'), 'Same trip'); assert.strictEqual(w('Maya'), 'Gets out at Kyle'); assert.strictEqual(w('Kiran'), 'Gets in at Kyle');
+  assert.strictEqual(w('Bo'), 'Kyle → Buda (both on the way)');
+  assert.deepStrictEqual(res.partial.map(r => r.sender).sort(), ['Nina', 'Rocky']);
+  assert.ok(!res.matches.concat(res.partial).some(r => ['Opp', 'Hou', 'Wim'].includes(r.sender)));
+  console.log('Search on the way: OK');
+}
