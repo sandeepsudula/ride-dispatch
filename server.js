@@ -166,6 +166,23 @@ function checkReminders() {
 setInterval(() => { checkReminders(); broadcast('tick', { now: Date.now() }); }, 30000);
 setInterval(recompute, 60000);   // the plan depends on the clock (where you can be by when)
 
+// Watchdog: tell you if WhatsApp stays disconnected (e.g. logged out from the phone), and when it's back.
+// Uses phone push (ntfy) when set, since your own WhatsApp can't be messaged while disconnected.
+let downSince = null, downAlerted = false;
+setInterval(() => {
+  if (wa.status === 'connected') {
+    if (downAlerted) notify('WhatsApp is connected again', 'Ride Dispatch is reading your group again.');
+    downSince = null; downAlerted = false; return;
+  }
+  downSince = downSince || Date.now();
+  if (!downAlerted && Date.now() - downSince > 5 * 60000) {
+    downAlerted = true;
+    notify('Ride Dispatch lost WhatsApp', wa.status === 'scan' || wa.status === 'logged_out'
+      ? 'WhatsApp was unlinked. Open the dashboard on your Mac and scan the QR code again.'
+      : 'It has been disconnected for 5 minutes. Check that your Mac is awake and online.', { level: 'urgent' });
+  }
+}, 60000);
+
 // ---------- WhatsApp ----------
 function textOf(msg) {
   const m = msg.message || {};
