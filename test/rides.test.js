@@ -248,3 +248,16 @@ console.log('All ride parsing and pooling checks passed (' + trips.length + ' ca
   assert.ok(T.mine[0].riders.length >= 2 && T.mine[0].local, 'taking an in-city trip picks up local riders');
   console.log('In-city search: ' + names + ' within San Marcos; Austin in-town: ' + A.matches.map(r => r.sender).join(','));
 }
+
+// Why two small groups going the same way were kept apart
+{
+  const at = h => new Date('2026-09-28T' + h + ':00-05:00').getTime();
+  const rs = [{ id: 'w1', person: 'a', sender: 'Cursed', from: 'Georgetown', dest: 'San Marcos', when: at('19:00'), seats: 1 },
+              { id: 'w2', person: 'b', sender: 'Rohan', from: 'South Austin', dest: 'San Marcos', when: at('19:00'), seats: 1 }];
+  const p = R.findRides(rs, [], { seats: 4, now: at('16:50'), minPeople: 2 });
+  assert.strictEqual(p.worth.length, 0);
+  assert.ok(/reach South Austin about 7:4\d PM/.test(p.small[0].apart[0].why), p.small[0].apart[0].why);
+  const same = R.findRides(rs.map(r => ({ ...r, from: 'Austin' })), [], { seats: 4, now: at('16:50'), minPeople: 2 });
+  assert.strictEqual(same.worth.length, 1);
+  console.log('Why apart:', p.small[0].apart[0].why);
+}
