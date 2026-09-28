@@ -147,3 +147,24 @@ console.log('All ride parsing and pooling checks passed (' + trips.length + ' ca
   assert.ok(T.mine[0].riders.some(r => r.sender === 'Kiran') && T.mine[0].riders.some(r => r.sender === 'Maya'), 'your trip picks up on the way');
   console.log('Along the route: ' + south.path + ' (' + names(south) + ') | ' + north.path + ' (' + names(north) + ')');
 }
+
+// Search: your trip + the window you're free
+{
+  const at = hm => new Date('2026-09-27T' + hm + ':00').getTime();
+  const msgs = [['14:00', 'Asha', 'need ride to Austin at 5pm'], ['14:01', 'Kiran', 'need ride from Kyle to Austin at 5:15pm'], ['14:02', 'Maya', 'need a ride to Kyle at 5pm'],
+    ['14:03', 'Dev', 'need ride from Buda to Austin 6:40pm'], ['14:04', 'Nora', 'need ride to Austin at 6:30pm'], ['14:05', 'Ravi', 'need ride from Austin to SM at 7pm'],
+    ['14:06', 'Sam', 'need ride to Austin at 6:45pm'], ['14:07', 'Late', 'need ride to Austin at 11pm'], ['14:08', 'Zed', 'need ride to Houston at 6pm']]
+    .map(([hm, s, x], i) => ({ id: 'q' + i, ts: at(hm), sender: s, text: x }));
+  const a = R.analyze(msgs, R.buildCities());
+  const q = { id: 'S1', from: 'San Marcos', dest: 'Austin', start: at('16:30'), end: at('19:30') };
+  const res = R.searchRides(a.requests, q, { seats: 3, now: at('14:30') });
+  const names = t => t.riders.map(r => r.sender).sort().join(',');
+  assert.deepStrictEqual(res.options.map(names), ['Asha,Kiran,Maya', 'Dev,Nora,Sam']);
+  assert.ok(!res.matches.some(r => ['Late', 'Zed', 'Ravi'].includes(r.sender)), 'outside the window, wrong route or wrong direction are left out');
+  const back = R.searchRides(a.requests, { from: 'Austin', dest: 'San Marcos', start: at('18:30'), end: at('20:00') }, { seats: 3, now: at('14:30') });
+  assert.deepStrictEqual(back.options.map(names), ['Ravi'], 'the return trip finds the return rider');
+  const ann = {};
+  assert.strictEqual(R.searchAlerts([{ q, result: res }], ann, 3).length, 1);
+  assert.strictEqual(R.searchAlerts([{ q, result: res }], ann, 3).length, 0, 'no repeat alert');
+  console.log('Search: ' + res.options.map(t => R.fmtTime(t.depart) + ' ' + t.path + ' (' + names(t) + ')').join(' | '));
+}

@@ -40,6 +40,7 @@ You drive one car and decide yourself whether a trip is worth it. The app finds 
 - **Smaller groups** (below your minimum) are listed with **Take anyway**. No alerts for them.
 - **Along the route, both directions** (on by default): riders whose start and destination are both on your route are grouped, in the right order. For example, San Marcos → Kyle → Buda → Austin can pick someone up in Kyle, drop someone in Kyle, and reuse that seat. Each rider is matched to when the car passes their city. Untick it in settings to group only riders going between the same two cities.
 - Drivers offering rides in the group are listed but never used.
+- **Find passengers for your trip:** at the top of the dashboard, pick From, To, the date and the window you're free (e.g. 5–8 PM). It shows the best times to leave, most passengers first, plus everyone asking for that route in your window. **Save & alert me** keeps the search and alerts you when your minimum number of people fit.
 
 ## Cities
 

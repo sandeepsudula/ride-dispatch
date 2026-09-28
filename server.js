@@ -36,6 +36,7 @@ const settings = Object.assign({
   minPeople: 3,          // a ride is worth taking from this many passengers
   onTheWay: true,        // group riders whose start and destination are along the same route, both directions
   myTrips: [],           // trips you decided to take: {id, from, dest, when}
+  searches: [],          // saved searches (your availability): {id, from, dest, start, end}
   extraCities: '',       // your own additions, one per line, e.g. "Bastrop"
   notifySelf: true,      // send alerts to your own "Message yourself" chat
   ntfyTopic: '',         // optional: phone push via the free ntfy app
@@ -98,8 +99,12 @@ function recompute() {
   const F = R.findRides(a.requests, settings.myTrips, { seats: settings.cap, home: settings.home, now, win: settings.win, detour: settings.detour, minPeople: settings.minPeople, onTheWay: settings.onTheWay !== false });
   plan = { requests: a.requests, drivers: a.drivers, cancelled: a.cancelled, mine: F.mine, worth: F.worth, small: F.small, tooBig: F.tooBig,
     trips: [...F.mine, ...F.worth, ...F.small] };
-  // New groups that reached your minimum, and new passengers joining them
-  const fresh = R.groupAlerts(plan, announced);
+  // Saved searches: your trip + the window you're free
+  settings.searches = (settings.searches || []).filter(q => q.end > now);
+  const opts = { seats: settings.cap, home: settings.home, now, win: settings.win, detour: settings.detour, onTheWay: settings.onTheWay !== false };
+  plan.searches = settings.searches.map(q => ({ q, result: R.searchRides(a.requests, q, opts) }));
+  // New groups that reached your minimum, new passengers joining them, and matches for saved searches
+  const fresh = [...R.groupAlerts(plan, announced), ...R.searchAlerts(plan.searches, announced, settings.minPeople)];
   save('announced.json', announced);
   if (primed && settings.alertNewRequests) fresh.forEach(al => notify(al.title, al.body, { tripId: al.tripId }));
   primed = true;   // on startup, groups that already exist are remembered without alerting
@@ -368,6 +373,16 @@ app.post('/api/mytrips', (req, res) => {
     if (!b.dest || !b.when || !(+b.when > 0)) return res.status(400).json({ error: 'Pick where you are going and when you leave.' });
     if ((b.from || settings.home) === b.dest) return res.status(400).json({ error: 'From and To are the same city.' });
     settings.myTrips.push({ id: 't' + Date.now().toString(36), from: b.from || settings.home, dest: b.dest, when: +b.when });
+  }
+  save('settings.json', settings); recompute(); res.json({ ok: true });
+});
+
+app.post('/api/searches', (req, res) => {
+  const b = req.body || {};
+  if (b.remove) settings.searches = (settings.searches || []).filter(q => q.id !== b.remove);
+  else {
+    if (!b.dest || !(+b.start > 0) || !(+b.end >= +b.start)) return res.status(400).json({ error: 'Pick where you are going and the time you are free.' });
+    settings.searches = (settings.searches || []).concat({ id: 's' + Date.now().toString(36), from: b.from || settings.home, dest: b.dest, start: +b.start, end: +b.end });
   }
   save('settings.json', settings); recompute(); res.json({ ok: true });
 });
