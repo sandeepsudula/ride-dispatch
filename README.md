@@ -26,6 +26,8 @@ npm start
 
 Mac users can double-click `Start Ride Dispatch (Mac).command`; Windows users `Start Ride Dispatch (Windows).bat`. To keep it running with the terminal closed: `npx pm2 start "caffeinate -i node server.js" --name rides` (Mac).
 
+**On your phone:** on the Mac dashboard, open **Phone access** and set a password. Install the free **Tailscale** app on the Mac and the phone (same account), then open the `http://100.x.x.x:3000` address shown in Phone access on your phone and log in. On the same Wi-Fi, the Wi-Fi address works too. The Mac itself never asks for the password.
+
 **Alerts go to** your own WhatsApp "Message yourself" chat (on by default), optional phone push through the free **ntfy** app (enter a topic name in settings), and the dashboard (click **Turn on sound alerts**). The app never posts in the group unless you click **Post seats to group**.
 
 ## How it finds rides for you
@@ -69,4 +71,4 @@ Uses Railway (railway.com, about $5/month). Run these from this folder in a term
 3. Open that address on your phone or computer, enter any username plus your password, scan the QR code and tick the ride group.
 4. Stop the copy on your Mac (`npx pm2 stop rides` or Control + C) so two copies don't share one WhatsApp login.
 
-Without `DASHBOARD_PASSWORD`, the dashboard only opens on the same computer (localhost).
+Other devices can only open the dashboard after logging in with the phone password (set in **Phone access**, or with `DASHBOARD_PASSWORD`). Without one, only the computer running the app can open it.

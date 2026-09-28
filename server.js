@@ -86,7 +86,8 @@ function broadcast(type, data) {
   const payload = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const res of clients) res.write(payload);
 }
-const snapshot = () => ({ live: true, cityNames: R.cityNames(cities), wa: { status: wa.status, qr: wa.qr, me: wa.me, groups: wa.groups }, settings, plan, alerts: alertsLog.slice(0, 30), now: Date.now(), messageCount: messages.filter(m => settings.groups.includes(m.group)).length });
+const snapshot = () => ({ live: true, cityNames: R.cityNames(cities), wa: { status: wa.status, qr: wa.qr, me: wa.me, groups: wa.groups }, settings: { ...settings, phoneAuth: undefined },
+  phone: { on: typeof hasPassword === 'function' && hasPassword(), fromEnv: !!(process.env.DASHBOARD_PASSWORD || '').trim(), port: PORT, addresses: typeof addresses === 'function' ? addresses() : [] }, plan, alerts: alertsLog.slice(0, 30), now: Date.now(), messageCount: messages.filter(m => settings.groups.includes(m.group)).length });
 
 function recompute() {
   const watched = messages.filter(m => settings.groups.includes(m.group) && m.ts > Date.now() - 3 * 86400000)
@@ -268,15 +269,61 @@ async function connect() {
 
 // ---------- web dashboard + API ----------
 const app = express();
-// Password protection. Set DASHBOARD_PASSWORD on any server reachable from the internet.
-const PASSWORD = process.env.DASHBOARD_PASSWORD || '';
-if (PASSWORD) app.use((req, res, next) => {
-  const [, b64 = ''] = (req.headers.authorization || '').split(' ');
-  const pass = Buffer.from(b64, 'base64').toString().split(':').slice(1).join(':');
-  if (pass === PASSWORD) return next();
-  res.set('WWW-Authenticate', 'Basic realm="Ride Dispatch"').status(401).send('Password required.');
-});
 app.use(express.json());
+
+// ---------- phone / remote access ----------
+// This computer (localhost) never needs a password. Any other device (your phone over Wi-Fi or Tailscale,
+// or a cloud server) needs the phone password, set on the dashboard or with DASHBOARD_PASSWORD.
+const crypto = require('crypto');
+const os = require('os');
+const envPw = (process.env.DASHBOARD_PASSWORD || '').trim();
+const isLocal = req => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(req.socket.remoteAddress || '');
+const hashPw = (pw, salt) => crypto.scryptSync(String(pw), salt, 32).toString('hex');
+const hasPassword = () => !!envPw || !!(settings.phoneAuth && settings.phoneAuth.hash);
+const checkPassword = pw => { pw = String(pw || '').trim(); if (!pw) return false; if (envPw) return pw === envPw; const a = settings.phoneAuth; return !!a && hashPw(pw, a.salt) === a.hash; };
+let secret = load('secret.json', null);
+if (!secret) { secret = crypto.randomBytes(32).toString('hex'); save('secret.json', secret); }
+const sessionToken = () => crypto.createHmac('sha256', secret).update(envPw || (settings.phoneAuth || {}).hash || '').digest('hex');   // changes when the password changes
+const cookieOf = (req, name) => ((req.headers.cookie || '').split(/;\s*/).find(c => c.startsWith(name + '=')) || '').slice(name.length + 1);
+const addresses = () => Object.values(os.networkInterfaces()).flat().filter(a => a && a.family === 'IPv4' && !a.internal)
+  .map(a => ({ ip: a.address, kind: a.address.startsWith('100.') ? 'Tailscale' : 'Wi-Fi' }));
+
+const shell = (title, body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${title}</title><style>body{margin:0;min-height:100vh;display:grid;place-items:center;background:#ECEFEC;color:#15201B;font:16px system-ui,sans-serif;padding:16px}
+@media (prefers-color-scheme:dark){body{background:#0E1411;color:#E4ECE7}.card{background:#161F1B!important;border-color:#2A3831!important}input{background:#1C2721!important;color:#E4ECE7!important;border-color:#2A3831!important}}
+.card{background:#fff;border:1px solid #D2DAD5;border-radius:14px;padding:22px;max-width:360px;width:100%;box-sizing:border-box}h1{font-size:20px;margin:0 0 6px}p{color:#5A6A62;margin:0 0 14px;font-size:14px}
+input{width:100%;box-sizing:border-box;font:inherit;padding:10px 12px;border:1px solid #D2DAD5;border-radius:8px;margin-bottom:12px}button{width:100%;font:inherit;font-weight:700;padding:10px;border:0;border-radius:8px;background:#1B6A49;color:#fff}
+.err{color:#B63A28}</style></head><body><div class="card">${body}</div></body></html>`;
+const loginPage = msg => shell('Ride Dispatch login', `<h1>Ride Dispatch</h1><p>Enter the phone password you set on your Mac.</p>${msg ? `<p class="err">${msg}</p>` : ''}
+<form method="post" action="login"><input type="password" name="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" autofocus placeholder="Password" required><button type="submit">Log in</button></form>`);
+
+app.use((req, res, next) => {
+  if (isLocal(req) || req.path === '/login') return next();
+  if (!hasPassword()) return res.status(403).type('html').send(shell('Phone access is off', '<h1>Phone access is off</h1><p>On your Mac, open the dashboard, go to <b>Phone access</b> and set a password. Then reload this page.</p>'));
+  if (cookieOf(req, 'rd_auth') === sessionToken()) return next();
+  const [, b64 = ''] = (req.headers.authorization || '').split(' ');
+  if (b64 && checkPassword(Buffer.from(b64, 'base64').toString().split(':').slice(1).join(':'))) return next();
+  if (req.method === 'GET' && !req.path.startsWith('/api') && req.path !== '/events' && req.path !== '/rides.js') return res.redirect('login');
+  res.status(401).json({ error: 'Your login expired. Reload the page and log in again.' });
+});
+app.get('/login', (req, res) => res.type('html').send(loginPage()));
+app.post('/login', express.urlencoded({ extended: false }), (req, res) => {
+  if (!hasPassword()) return res.redirect('./');
+  if (!checkPassword(req.body && req.body.password)) return res.status(401).type('html').send(loginPage('Wrong password. Try again.'));
+  const secure = req.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `rd_auth=${sessionToken()}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 24 * 3600}${secure}`);
+  res.redirect('./');
+});
+app.post('/api/phone-password', (req, res) => {
+  if (envPw) return res.status(409).json({ error: 'The password is set by DASHBOARD_PASSWORD when the app starts. Remove it from the start command to set one here.' });
+  const pw = String((req.body || {}).password || '').trim();
+  if (req.body && req.body.off) { delete settings.phoneAuth; save('settings.json', settings); broadcast('state', snapshot()); return res.json({ ok: true }); }
+  if (pw.length < 4) return res.status(400).json({ error: 'Use at least 4 characters.' });
+  const salt = crypto.randomBytes(16).toString('hex');
+  settings.phoneAuth = { salt, hash: hashPw(pw, salt) };
+  save('settings.json', settings); broadcast('state', snapshot());
+  res.json({ ok: true });
+});
 const page = () => '<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body>' + fs.readFileSync(path.join(__dirname, 'public', 'index.html'), 'utf8') + '</body></html>';
 app.get(['/', '/index.html'], (req, res) => res.type('html').send(page()));
 app.get('/rides.js', (req, res) => res.sendFile(path.join(__dirname, 'lib', 'rides.js')));
@@ -357,6 +404,11 @@ app.post('/api/post-plan', async (req, res) => {
 recompute();   // show saved requests right away, even before WhatsApp reconnects
 
 // Without a password, only this computer can open the dashboard. With one, other devices can too.
-const HOST = process.env.HOST || (PASSWORD ? '0.0.0.0' : '127.0.0.1');
-app.listen(PORT, HOST, () => console.log(`Dashboard: http://localhost:${PORT}` + (PASSWORD ? ' (password protected)' : ' (this computer only; set DASHBOARD_PASSWORD to allow other devices)')));
+// Other devices can connect, but only after logging in with the phone password (see "phone / remote access").
+const HOST = process.env.HOST || '0.0.0.0';
+app.listen(PORT, HOST, () => {
+  console.log(`Dashboard: http://localhost:${PORT}`);
+  if (hasPassword()) addresses().forEach(a => console.log(`  on your phone (${a.kind}): http://${a.ip}:${PORT}`));
+  else console.log('  Phone access is off. Set a phone password on the dashboard to turn it on.');
+});
 connect().catch(e => { console.error('WhatsApp connection failed:', e); wa.status = 'error'; });

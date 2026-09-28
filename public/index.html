@@ -199,6 +199,7 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
 
     <aside class="col">
       <section class="panel" id="source"></section>
+      <section class="panel" id="phonePanel" hidden></section>
 
       <section class="panel">
         <h2>Your settings</h2>
@@ -483,6 +484,7 @@ async function setOverride(id, o){
 }
 async function api(path, body){
   try { const r = await fetch(path, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    if (r.status === 401) { location.href = 'login'; return null; }
     const j = await r.json(); if (!r.ok) toast({ title: 'Something went wrong', body: j.error || r.statusText }); return j; }
   catch (e) { toast({ title: 'The server did not answer', body: 'Check that the terminal running "npm start" is still open.' }); return null; }
 }
@@ -509,13 +511,31 @@ function renderSourceLive(){
     api('api/settings', { groups });
   });
 }
+function renderPhone(){
+  const box = $('phonePanel'), ph = S.phone || {};
+  box.hidden = !S.live;
+  if (!S.live || box.contains(document.activeElement)) return;
+  const links = (ph.addresses || []).sort((a,b) => (a.kind === 'Tailscale' ? -1 : 1)).map(a =>
+    '<div class="mytrip"><div><span class="mono">http://' + esc(a.ip) + ':' + ph.port + '</span><small>' + (a.kind === 'Tailscale' ? 'Tailscale: works anywhere your phone has Tailscale on' : 'Same Wi-Fi only') + '</small></div></div>').join('');
+  box.innerHTML = '<h2>Phone access</h2>' +
+    (ph.on ? '<div class="status-line"><span class="dot ok"></span>On</div><p>Open one of these on your phone and enter your phone password:</p><div class="mytrips">' + (links || '<p>No network found.</p>') + '</div>'
+           : '<div class="status-line"><span class="dot"></span>Off</div><p>Set a password to open this dashboard on your phone (with Tailscale, or on the same Wi-Fi). This Mac never needs it.</p>') +
+    (ph.fromEnv ? '<p class="hint">The password comes from DASHBOARD_PASSWORD in the start command.</p>' :
+      '<form class="form" id="pwForm"><label class="full">' + (ph.on ? 'New phone password' : 'Phone password') + '<input id="pw1" type="text" autocomplete="off" autocapitalize="none" spellcheck="false" minlength="4" required></label>' +
+      '<div class="full row-btns"><button class="btn small primary" type="submit">' + (ph.on ? 'Change password' : 'Turn on phone access') + '</button>' +
+      (ph.on ? '<button class="btn small" type="button" id="pwOff">Turn off</button>' : '') + '</div></form>');
+  const f = $('pwForm');
+  if (f) f.onsubmit = async e => { e.preventDefault(); const r = await api('api/phone-password', { password: $('pw1').value });
+    if (r && r.ok) toast({ title: 'Phone password saved', body: 'Open the address shown here on your phone and log in with it.' }); };
+  const off = $('pwOff'); if (off) off.onclick = async () => { const r = await api('api/phone-password', { off: true }); if (r && r.ok) toast({ title: 'Phone access turned off', body: 'Only this Mac can open the dashboard now.' }); };
+}
 function startLive(first){
   S = Object.assign(S, first);
   const es = new EventSource('events');
-  es.addEventListener('state', e => { const d = JSON.parse(e.data); Object.assign(S, d); renderSourceLive(); fillSettings(); render(); });
+  es.addEventListener('state', e => { const d = JSON.parse(e.data); Object.assign(S, d); renderSourceLive(); renderPhone(); fillSettings(); render(); });
   es.addEventListener('alert', e => { const a = JSON.parse(e.data); S.alerts.unshift(a); toast(a); renderAlerts(); });
   es.addEventListener('tick', () => render());
-  renderSourceLive(); fillSettings(true); render();
+  renderSourceLive(); renderPhone(); fillSettings(true); render();
 }
 
 // =============== OFFLINE MODE (exported chat, runs in the browser) ===============
