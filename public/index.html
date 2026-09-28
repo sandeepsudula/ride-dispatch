@@ -517,23 +517,21 @@ function renderSearch(){
   searchOpts = res.options;
   $('searchOut').hidden = false;
   $('sResTitle').textContent = res.options.length ? 'Best times to leave' : ((res.partial || []).length ? 'No full matches yet' : 'No passengers yet for this trip');
-  $('sResHint').textContent = Q.from + ' → ' + Q.dest + ' · ' + fmtD(Q.start) + ' ' + fmtT(Q.start) + '–' + fmtT(Q.end) + (res.options.length ? ' · most passengers first' : ' · save it to get an alert when someone asks');
+  $('sResHint').textContent = (Q.from === Q.dest ? 'Within ' + Q.from : Q.from + ' → ' + Q.dest) + ' · ' + fmtD(Q.start) + ' ' + fmtT(Q.start) + '–' + fmtT(Q.end) + (res.options.length ? ' · most passengers first' : ' · save it to get an alert when someone asks');
   $('searchRes').innerHTML = res.options.map(t => tripCard(t)).join('');
-  const onWay = res.matches.filter(r => r.where !== 'Same trip').length;
+  const onWay = res.matches.filter(r => r.where !== 'Same trip' && !/^Within |\(in town\)$/.test(r.where)).length;
   $('searchAll').innerHTML = (res.matches.length ? '<div class="label" style="margin:10px 0 6px">Passengers for this trip in your window (' + res.matches.length + (onWay ? ', ' + onWay + ' on the way' : '') + ')</div><div class="tablewrap"><table><thead><tr><th>Rider</th><th>Where</th><th>Distance</th><th>Wants</th><th>You’d leave ' + esc(Q.from) + '</th></tr></thead><tbody>' +
-    res.matches.map(r => '<tr><td>' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + '<br>' + phoneLink(r) + '</td><td>' + (r.where === 'Same trip' ? esc((r.from || st.home) + ' → ' + r.dest) : '<span class="chip ok">On the way</span><br>' + esc(r.where)) + '</td><td class="mono">' + (r.tripMi != null ? Math.round(r.tripMi) + ' mi trip' : '') + (r.fromYouMi ? '<br><span class="hint">pickup ' + Math.round(r.fromYouMi) + ' mi from ' + esc(Q.from) + '</span>' : '') + '</td><td class="mono">' + esc(fmtT(r.when)) + '</td><td class="mono">' + esc(fmtT(r.ideal)) + '</td></tr>').join('') + '</tbody></table></div>' : '') +
+    res.matches.map(r => '<tr><td>' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + '<br>' + phoneLink(r) + '</td><td>' + (r.where === 'Same trip' ? esc((r.from || st.home) + ' → ' + r.dest) : /^Within |\(in town\)$/.test(r.where) ? esc(r.where) : '<span class="chip ok">On the way</span><br>' + esc(r.where)) + '</td><td class="mono">' + (r.tripMi != null ? Math.round(r.tripMi) + ' mi trip' : '') + (r.fromYouMi ? '<br><span class="hint">pickup ' + Math.round(r.fromYouMi) + ' mi from ' + esc(Q.from) + '</span>' : '') + '</td><td class="mono">' + esc(fmtT(r.when)) + '</td><td class="mono">' + esc(fmtT(r.ideal)) + '</td></tr>').join('') + '</tbody></table></div>' : '') +
     ((res.partial || []).length ? '<div class="label" style="margin:14px 0 6px">Partly on your way (' + res.partial.length + '): their trip overlaps yours, so ask them first</div><div class="tablewrap"><table><thead><tr><th>Rider</th><th>What you could do</th><th>Wants</th><th>Around</th></tr></thead><tbody>' +
     res.partial.map(r => '<tr><td>' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + '<br>' + phoneLink(r) + '</td><td class="msg">' + esc(r.note) + '</td><td class="mono">' + esc(fmtT(r.when)) + '</td><td class="mono">' + esc(fmtT(r.ideal)) + '</td></tr>').join('') + '</tbody></table></div>' : '');
 }
 $('searchForm').addEventListener('submit', e => {
   e.preventDefault(); const q = readSearch();
-  if (q.from === q.dest) { toast({ title: 'From and To are the same city', body: 'Pick where you start and where you are going.' }); return; }
   Q = q; renderSearch(); $('searchOut').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 });
 $('sf_swap').addEventListener('click', () => { const a = $('sf_from').value; $('sf_from').value = $('sf_dest').value; $('sf_dest').value = a; });
 $('sf_save').addEventListener('click', async () => {
   const q = readSearch();
-  if (q.from === q.dest) { toast({ title: 'From and To are the same city', body: 'Pick where you start and where you are going.' }); return; }
   Q = q;
   if (S.live) { const r = await api('api/searches', q); if (!r || !r.ok) return; }
   else { S.settings.searches = (S.settings.searches || []).concat({ id: 's' + Date.now().toString(36), ...q }); store.set('settings', S.settings); offRecompute(); }
@@ -544,7 +542,6 @@ $('sf_save').addEventListener('click', async () => {
 // ---------- your trips ----------
 async function addTrip(t){
   if (!t.dest || !t.when) { toast({ title: 'Pick where you are going and when you leave', body: 'Both are needed to plan the trip.' }); return; }
-  if ((t.from || S.settings.home) === t.dest) { toast({ title: 'From and To are the same city', body: 'Pick where you start and where you are going.' }); return; }
   if (S.live) await api('api/mytrips', t);
   else { S.settings.myTrips = (S.settings.myTrips || []).concat({ id: 't' + Date.now().toString(36), from: t.from, dest: t.dest, when: t.when }); store.set('settings', S.settings); offRecompute(); }
 }

@@ -228,3 +228,23 @@ console.log('All ride parsing and pooling checks passed (' + trips.length + ' ca
   for (const t of [...F.worth, ...F.small]) assert.strictEqual(new Set(t.riders.map(r => r.person)).size, t.riders.length, 'nobody twice in one car');
   console.log('Duplicates: ' + a.requests.length + ' requests from ' + msgs.length + ' messages; groups have no repeats');
 }
+
+// In-city search: From = To finds rides within that city (and between areas of it)
+{
+  const at = hm => new Date('2026-09-27T' + hm + ':00').getTime();
+  const msgs = [['14:00', 'Ola', 'Need ride within san marcos at 6pm'], ['14:01', 'Ben', 'need a ride around town sm 6:15pm'],
+    ['14:02', 'Cy', 'need ride from txst to san marcos outlets at 6:10pm'], ['14:03', 'Dan', 'need ride to Austin at 6pm'],
+    ['14:04', 'Eve', 'need ride from north austin to south austin at 6pm']]
+    .map(([hm, s, x], i) => ({ id: 'l' + i, ts: at(hm), sender: s, text: x }));
+  const a = R.analyze(msgs, R.buildCities());
+  const S = R.searchRides(a.requests, { from: 'San Marcos', dest: 'San Marcos', start: at('17:30'), end: at('19:00') }, { seats: 3, now: at('14:30') });
+  const names = S.options[0].riders.map(r => r.sender).sort().join(',');
+  assert.ok(/Ben/.test(names) && /Ola/.test(names), 'local riders found: ' + names);
+  assert.ok(!S.matches.some(r => r.sender === 'Dan' || r.sender === 'Eve'), 'out-of-town and other-city riders excluded');
+  assert.strictEqual(S.options[0].route, 'Within San Marcos');
+  const A = R.searchRides(a.requests, { from: 'Austin', dest: 'Austin', start: at('17:30'), end: at('19:00') }, { seats: 3, now: at('14:30') });
+  assert.ok(A.matches.some(r => r.sender === 'Eve'), 'North Austin → South Austin is an in-town ride in Austin');
+  const T = R.findRides(a.requests, [{ id: 'L', from: 'San Marcos', dest: 'San Marcos', when: at('18:00') }], { seats: 3, now: at('14:30') });
+  assert.ok(T.mine[0].riders.length >= 2 && T.mine[0].local, 'taking an in-city trip picks up local riders');
+  console.log('In-city search: ' + names + ' within San Marcos; Austin in-town: ' + A.matches.map(r => r.sender).join(','));
+}

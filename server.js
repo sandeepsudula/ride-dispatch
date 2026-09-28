@@ -400,7 +400,6 @@ app.post('/api/mytrips', (req, res) => {
   if (b.remove) settings.myTrips = settings.myTrips.filter(t => t.id !== b.remove);
   else {
     if (!b.dest || !b.when || !(+b.when > 0)) return res.status(400).json({ error: 'Pick where you are going and when you leave.' });
-    if ((b.from || settings.home) === b.dest) return res.status(400).json({ error: 'From and To are the same city.' });
     settings.myTrips.push({ id: 't' + Date.now().toString(36), from: b.from || settings.home, dest: b.dest, when: +b.when });
   }
   save('settings.json', settings); recompute(); res.json({ ok: true });
