@@ -60,6 +60,14 @@ Texas cities around San Marcos, areas of Austin (North/South/East/West Austin, D
 - This uses WhatsApp Web's linked-device protocol through the unofficial Baileys library. WhatsApp does not officially support it, and heavy automated posting can get a number restricted. The app only reads, and posts only when you click. Using a spare number is safest.
 - Group members' messages and phone numbers are stored in `data/` on your computer. `data/` is in `.gitignore`; never commit it (it also holds your WhatsApp login).
 
+## Run it on an Android phone (Termux)
+
+1. Install **Termux** from F-Droid (f-droid.org). The Play Store version is outdated.
+2. In Termux: `pkg update && pkg install nodejs-lts git`, then `git clone https://github.com/sandeepsudula/ride-dispatch && cd ride-dispatch && npm install`.
+3. Keep it running: `termux-wake-lock`, then `node server.js`. In Android settings, set Termux's battery use to **Unrestricted**.
+4. Open http://localhost:3000 in Chrome on the phone. Instead of scanning the QR code, enter your number under **Link with a code instead**, then in WhatsApp: Linked devices → Link a device → **Link with phone number instead** and type the code.
+5. Stop the copy on your Mac first, so two copies don't share one WhatsApp login.
+
 ## Run it in the cloud (alerts while your Mac sleeps)
 
 Uses Railway (railway.com, about $5/month). Run these from this folder in a terminal:

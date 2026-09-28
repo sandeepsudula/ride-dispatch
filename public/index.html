@@ -597,7 +597,10 @@ function renderSourceLive(){
   const watched = S.settings.groups || [];
   const st = { connected:['ok','Linked to WhatsApp' + (wa.me && wa.me.name ? ' as ' + wa.me.name : '')], scan:['amber','Scan to link WhatsApp'], reconnecting:['amber','Reconnecting…'], starting:['amber','Starting…'], logged_out:['red','Logged out. Restarting…'], error:['red','Could not start WhatsApp'] }[wa.status] || ['amber', wa.status];
   let h = '<h2>WhatsApp</h2><div class="status-line"><span class="dot ' + st[0] + '"></span>' + esc(st[1]) + '</div>';
-  if (wa.status === 'scan' && wa.qr) h += '<p>On your phone: WhatsApp → Settings → Linked devices → Link a device, then scan.</p><img class="qr" alt="WhatsApp link QR code" src="' + esc(wa.qr) + '">';
+  if (wa.status === 'scan' && wa.qr) h += '<p>On your phone: WhatsApp → Settings → Linked devices → Link a device, then scan.</p><img class="qr" alt="WhatsApp link QR code" src="' + esc(wa.qr) + '">' +
+    '<div class="label">Running this on the same phone? Link with a code instead</div>' +
+    (wa.pairCode ? '<p>In WhatsApp: Linked devices → Link a device → <b>Link with phone number instead</b>, and enter:</p><div class="mono" style="font-size:28px;font-weight:600;letter-spacing:.12em;text-align:center">' + esc(wa.pairCode) + '</div>'
+      : '<div class="row-btns"><input id="pairPhone" type="tel" style="flex:1" placeholder="Your number, e.g. 1 512 555 0123" autocomplete="tel"><button class="btn small primary" type="button" id="pairBtn">Get code</button></div>');
   if (wa.status === 'connected') {
     h += '<label class="label" for="inv">Join a group by invite link</label><div class="row-btns"><input id="inv" type="text" style="flex:1" value="' + esc(MY_INVITE) + '"><button class="btn small primary" type="button" id="joinBtn">Join &amp; watch</button></div>';
     h += '<div class="label">Groups to watch for ride requests</div><div class="groups">' +
@@ -605,8 +608,9 @@ function renderSourceLive(){
     h += '<p>' + (S.messageCount || 0) + ' messages read from watched groups. New messages are read the moment they arrive.</p>';
   }
   const box = $('source');
-  if (box.contains(document.activeElement) && document.activeElement.id === 'inv') return;
+  if (box.contains(document.activeElement) && ['inv', 'pairPhone'].includes(document.activeElement.id)) return;
   box.innerHTML = h;
+  const pb = $('pairBtn'); if (pb) pb.onclick = async () => { pb.disabled = true; const r = await api('api/pair', { phone: $('pairPhone').value }); pb.disabled = false; if (r && r.ok) toast({ title: 'Your code: ' + r.code, body: 'WhatsApp → Linked devices → Link a device → Link with phone number instead.' }); };
   const jb = $('joinBtn'); if (jb) jb.onclick = async () => { jb.disabled = true; const r = await api('api/join', { link: $('inv').value }); jb.disabled = false; if (r && r.ok) toast({ title: 'Joined ' + r.name, body: 'Watching it for ride requests now.' }); };
   box.querySelectorAll('[data-group]').forEach(cb => cb.onchange = () => {
     const groups = [...box.querySelectorAll('[data-group]:checked')].map(x => x.getAttribute('data-group'));

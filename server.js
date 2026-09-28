@@ -96,7 +96,7 @@ function broadcast(type, data) {
   const payload = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const res of clients) res.write(payload);
 }
-const snapshot = () => ({ live: true, cityNames: R.cityNames(cities), wa: { status: wa.status, qr: wa.qr, me: wa.me, groups: wa.groups }, settings: { ...settings, phoneAuth: undefined },
+const snapshot = () => ({ live: true, cityNames: R.cityNames(cities), wa: { status: wa.status, qr: wa.qr, pairCode: wa.status === 'scan' ? wa.pairCode : null, me: wa.me, groups: wa.groups }, settings: { ...settings, phoneAuth: undefined },
   phone: { on: typeof hasPassword === 'function' && hasPassword(), fromEnv: !!(process.env.DASHBOARD_PASSWORD || '').trim(), port: PORT, addresses: typeof addresses === 'function' ? addresses() : [] }, plan, alerts: alertsLog.slice(0, 30), now: Date.now(), messageCount: messages.filter(m => settings.groups.includes(m.group)).length });
 
 function recompute() {
@@ -424,6 +424,19 @@ app.post('/api/join', async (req, res) => {
     recompute();
     res.json({ ok: true, id: jid, name: (wa.groups.find(g => g.id === jid) || {}).name || jid });
   } catch (e) { res.status(500).json({ error: 'WhatsApp refused the invite (it may be expired, or you are already in the group): ' + e.message }); }
+});
+
+// Link WhatsApp with a code instead of a QR scan (needed when the app runs on the same phone as WhatsApp)
+app.post('/api/pair', async (req, res) => {
+  const digits = String((req.body || {}).phone || '').replace(/\D/g, '');
+  if (digits.length < 8) return res.status(400).json({ error: 'Enter your WhatsApp number with country code, e.g. 1 512 555 0123.' });
+  if (!sock || wa.status !== 'scan') return res.status(409).json({ error: wa.status === 'connected' ? 'WhatsApp is already linked.' : 'Wait until the QR code shows, then try again.' });
+  try {
+    const code = await sock.requestPairingCode(digits);
+    const pretty = String(code).replace(/(.{4})(.{4})/, '$1-$2');
+    wa.pairCode = pretty; broadcast('state', snapshot());
+    res.json({ ok: true, code: pretty });
+  } catch (e) { res.status(500).json({ error: 'WhatsApp did not give a code: ' + e.message }); }
 });
 
 app.post('/api/test-alert', async (req, res) => {
