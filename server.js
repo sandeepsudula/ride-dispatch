@@ -303,7 +303,7 @@ const loginPage = msg => shell('Ride Dispatch login', `<h1>Ride Dispatch</h1><p>
 <form method="post" action="login"><input type="password" name="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" autofocus placeholder="Password" required><button type="submit">Log in</button></form>`);
 
 app.use((req, res, next) => {
-  if (isLocal(req) || req.path === '/login') return next();
+  if (isLocal(req) || req.path === '/login' || req.path === '/manifest.webmanifest' || req.path.startsWith('/icons/')) return next();   // the home-screen icon loads before login
   if (!hasPassword()) return res.status(403).type('html').send(shell('Phone access is off', '<h1>Phone access is off</h1><p>On your Mac, open the dashboard, go to <b>Phone access</b> and set a password. Then reload this page.</p>'));
   if (cookieOf(req, 'rd_auth') === sessionToken()) return next();
   const [, b64 = ''] = (req.headers.authorization || '').split(' ');
