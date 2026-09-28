@@ -261,3 +261,19 @@ console.log('All ride parsing and pooling checks passed (' + trips.length + ' ca
   assert.strictEqual(same.worth.length, 1);
   console.log('Why apart:', p.small[0].apart[0].why);
 }
+
+// "around 7pm" is a time, not a ride within one city
+{
+  const now = new Date('2026-09-28T17:01:00-05:00').getTime();
+  const cities = R.buildCities(R.DEFAULT_CITIES);
+  const msgs = [['Cursed', '9779845881142', 'Need a ride from Austin to San Marcos at 7 pm today'],
+                ['Rohan', '16824066349', 'Anyone going from Austin to SM around 7pm?']]
+    .map(([s, p, t], i) => ({ id: 'ar' + i, sender: s, senderPhone: p, text: t, ts: now - 3600000 + i * 60000, group: 'g' }));
+  const a = R.analyze(msgs, cities, {});
+  assert.ok(a.requests.every(r => !r.local));
+  const F = R.findRides(a.requests, [], { seats: 4, now, minPeople: 2 });
+  assert.strictEqual(F.worth.length, 1); assert.strictEqual(F.worth[0].riders.length, 2);
+  const loc = R.analyze([{ id: 'l1', sender: 'X', text: 'need a ride around town in san marcos at 6pm', ts: now, group: 'g' }], cities, {});
+  assert.ok(loc.requests[0].local);
+  console.log('"around 7pm": Cursed + Rohan grouped');
+}
