@@ -11,6 +11,14 @@ const pino = require('pino');
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('baileys');
 const R = require('./lib/rides');
 
+// WhatsApp's encryption library prints its routine key changes ("Closing session: ...") to the terminal,
+// including key material. It's normal and not an error; keep it out of the terminal and pm2 log files.
+const QUIET = /^(Closing session|Opening session|Removing old closed session|Closing open session in favor|Decrypted message with closed session|Session error:Error: Bad MAC|Failed to decrypt message with any known session)/;
+for (const level of ['log', 'info', 'warn', 'error']) {
+  const orig = console[level].bind(console);
+  console[level] = (...args) => { if (typeof args[0] === 'string' && QUIET.test(args[0])) return; orig(...args); };
+}
+
 // WhatsApp drops the connection now and then (network change, phone offline, Mac waking up). The library can
 // throw from background work when that happens; keep running so the reconnect logic below can do its job.
 const HICCUP = /Connection Closed|Connection Failure|Connection Lost|Timed Out|Stream Errored|rate-overlimit|Precondition Required|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i;
