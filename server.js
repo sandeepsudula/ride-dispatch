@@ -8,7 +8,7 @@ const fs = require('fs');
 const express = require('express');
 const QRCode = require('qrcode');
 const pino = require('pino');
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion, Browsers } = require('baileys');
 const R = require('./lib/rides');
 
 // WhatsApp's encryption library prints its routine key changes ("Closing session: ...") to the terminal,
@@ -259,10 +259,11 @@ function applyGroupEvents(list) {
 }
 
 async function connect() {
+  wa.pairCode = null;   // a code only works for the connection it was made on
   const { state, saveCreds } = await useMultiFileAuthState(file('auth'));
   let version;
   try { ({ version } = await fetchLatestBaileysVersion()); } catch { /* use built-in */ }
-  sock = makeWASocket({ auth: state, version, logger: pino({ level: 'silent' }), browser: ['Ride Dispatch', 'Chrome', '1.0'], syncFullHistory: false, markOnlineOnConnect: false });
+  sock = makeWASocket({ auth: state, version, logger: pino({ level: 'silent' }), browser: Browsers.macOS('Chrome'), syncFullHistory: false, markOnlineOnConnect: false });   // standard browser name: WhatsApp rejects code linking from custom names
   sock.ev.on('creds.update', saveCreds);
 
   sock.ev.on('connection.update', async u => {
