@@ -212,8 +212,8 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
 
   <div class="grid">
     <div class="col">
-      <div class="section-h"><h2>Today</h2><span class="hint" id="smallHint"></span></div>
-      <div id="skipped"></div>
+      <div class="section-h"><h2>Today</h2><span class="hint" id="todayHint"></span></div>
+      <div id="today"></div>
       <details id="earlierWrap" hidden><summary id="earlierSum"></summary><div id="earlier"></div></details>
       <div id="futureWrap" hidden>
         <div class="section-h"><h2>Coming days</h2><span class="hint">Requests for later dates, grouped on their day.</span></div>
@@ -250,6 +250,9 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
       <div id="trips" class="trips"></div>
       <details id="pastWrap" hidden><summary id="pastSum"></summary><div id="past" class="trips"></div></details>
 
+
+      <div class="section-h"><h2>Smaller groups</h2><span class="hint" id="smallHint"></span></div>
+      <div id="skipped"></div>
 
       <div class="section-h"><h2>Needs details</h2><span class="hint">Ride requests missing a destination, a time, or where they start. Fill them in and they join a group.</span></div>
       <div id="details"></div>
@@ -381,15 +384,16 @@ function render(){
   const live = t => t.depart > now - 15*60000;
   const dayIdx = ms => { const a = new Date(); a.setHours(0,0,0,0); return Math.floor((ms - a.getTime()) / 86400000); };
   const worthAll = (plan.worth || []).filter(live), mine = (plan.mine || []).filter(live);
-  const worth = worthAll.filter(t => dayIdx(t.depart) <= 0);
+  const worth = worthAll;
   const past = [...(plan.worth || []), ...(plan.mine || [])].filter(t => !live(t)).sort((a,b) => b.depart - a.depart);
   const groupsAll = [...worthAll, ...(plan.small || []).filter(live)].sort((a,b) => a.depart - b.depart);
-  const small = groupsAll.filter(t => dayIdx(t.depart) <= 0);          // everything for today, biggest groups marked
+  const today = groupsAll.filter(t => dayIdx(t.depart) <= 0);          // everything for today, biggest groups marked
+  const small = (plan.small || []).filter(live);
   const later = groupsAll.filter(t => dayIdx(t.depart) >= 1);
   const inTrip = new Set(); plan.trips.forEach(t => t.riders.forEach(r => inTrip.add(r.id)));
   const sentToday = r => dayIdx(r.sentAt) === 0;
   const earlier = plan.requests.filter(r => sentToday(r) && !inTrip.has(r.id) && !R.isIncomplete(r, settings.home) && r.when && r.when < now && dayIdx(r.when) === 0).sort((a,b) => b.when - a.when);
-  const missing = plan.requests.filter(r => R.isIncomplete(r, settings.home) && sentToday(r));
+  const missing = plan.requests.filter(r => R.isIncomplete(r, settings.home));
 
   $('mode').className = 'mode' + (S.live && S.wa && S.wa.status === 'connected' ? ' live' : '');
   $('mode').textContent = S.live ? (S.wa && S.wa.status === 'connected' ? 'Live from WhatsApp' : 'Server running, WhatsApp not linked') : 'Offline · exported chat';
@@ -398,12 +402,14 @@ function render(){
   $('worthTitle').textContent = 'Rides worth taking (' + settings.minPeople + '+ people)';
   $('winLabel').textContent = (settings.onTheWay !== false ? 'along the route' : 'same place') + ' · within ' + settings.win + ' min · ' + settings.cap + ' seats';
   $('tripHint').textContent = worth.length ? (settings.onTheWay !== false ? 'Passengers along the same route at about the same time. People can get in and out on the way.' : 'Passengers going to the same place at about the same time.') : '';
-  $('smallHint').textContent = 'Every ride asked for today, all places, grouped by time. ★ = ' + settings.minPeople + '+ people.';
+  $('todayHint').textContent = 'Every ride asked for today, all places, grouped by time. ★ = ' + settings.minPeople + '+ people.';
+  $('smallHint').textContent = 'Fewer than ' + settings.minPeople + ' people so far. They move up when more people ask.';
 
   $('summary').innerHTML =
     '<span><b>' + worth.length + '</b>rides with ' + settings.minPeople + '+ people</span>' +
     '<span><b>' + mine.length + '</b>you’re taking</span>' +
-    '<span><b>' + small.length + '</b>groups today</span>' +
+    '<span><b>' + small.length + '</b>smaller groups</span>' +
+    '<span><b>' + today.length + '</b>groups today</span>' +
     '<span><b>' + later.length + '</b>coming days</span>' +
     '<span class="' + (missing.length ? 'warn' : '') + '"><b>' + missing.length + '</b>need details</span>';
 
@@ -417,7 +423,8 @@ function render(){
 
   fillSearchForm();
   renderSearch();
-  renderSmall(small, 'skipped', true);
+  renderSmall(today, 'today', false, 'No ride requests for the rest of today yet.');
+  renderSmall(small, 'skipped', true, 'No other ride requests right now.');
   $('futureWrap').hidden = !later.length;
   const byDay = {}; later.forEach(t => (byDay[fmtD(t.depart) + ' · ' + new Date(t.depart).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })] ||= []).push(t));
   $('future').innerHTML = Object.entries(byDay).map(([d, ts], i) => '<h3 class="dayh">' + esc(d) + ' <span class="hint">' + ts.reduce((n, t) => n + t.seats, 0) + ' people</span></h3><div id="fut' + i + '"></div>').join('');
@@ -476,17 +483,17 @@ function groupTime(t){
   if (rs.length && rs.every(r => r.asap)) return 'Now · asked ' + fmtT(Math.min(...rs.map(r => r.sentAt)));
   return fmtT(t.depart);
 }
-function renderSmall(small, target, withBig){
+function renderSmall(small, target, withBig, emptyText){
   const big = withBig ? (S.plan.tooBig || []).filter(r => r.when > Date.now() - 15*60000) : [];
   const min = S.settings.minPeople;
   $(target).innerHTML = (small.length || big.length) ? '<div class="tablewrap"><table class="stack"><thead><tr><th>Time</th><th>Route</th><th>People</th><th>Riders</th><th></th></tr></thead><tbody>' +
-    small.map(t => '<tr' + (t.seats >= min ? ' class="hot"' : '') + '><td class="mono" data-l="Time">' + esc(groupTime(t)) + '</td><td data-l="Route">' + esc(t.path) + '</td>' +
+    small.map(t => '<tr' + (t.seats >= min ? ' class="hot"' : '') + '><td class="mono" data-l="Time">' + esc((withBig && !(t.riders || []).every(r => r.asap) ? fmtD(t.depart) + ' ' : '') + groupTime(t)) + '</td><td data-l="Route">' + esc(t.path) + '</td>' +
       '<td class="mono" data-l="People">' + (t.seats >= min ? '★ ' : '') + t.seats + '</td>' +
       '<td data-l="Riders"><div>' + t.riders.map(r => esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + ((t.stopOrder || []).length > 2 ? ' <span class="hint">' + esc(routeText(r)) + '</span>' : '') + (r.noTime ? ' <span class="hint">(no time given)</span>' : '') + phoneLink(r)).join('<br>') +
       ((t.apart || []).length ? '<div class="apart">' + t.apart.map(x => 'Not with ' + esc(x.who) + ' (' + esc(x.path) + ', ' + esc(fmtT(x.depart)) + '): ' + esc(x.why)).join('<br>') + '</div>' : '') + '</div></td>' +
       '<td><button class="btn small' + (t.seats >= min ? ' primary' : '') + '" type="button" data-keep="' + esc(t.id) + '">' + (t.seats >= min ? 'I’m taking this' : 'Take anyway') + '</button></td></tr>').join('') +
     big.map(r => '<tr><td class="mono" data-l="Time">' + esc(whenText(r)) + '</td><td data-l="Route">' + esc(routeText(r)) + '</td><td class="mono" data-l="People">' + r.seats + '</td><td data-l="Riders"><div>' + esc(r.sender) + phoneLink(r) + '</div></td><td class="hint">More people than your seats</td></tr>').join('') +
-    '</tbody></table></div>' : '<div class="empty">' + (withBig ? 'No ride requests for the rest of today yet.' : '') + '</div>';
+    '</tbody></table></div>' : (emptyText ? '<div class="empty">' + emptyText + '</div>' : '');
 }
 
 let detailsKey = '';
