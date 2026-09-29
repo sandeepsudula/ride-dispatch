@@ -171,8 +171,15 @@ tr:last-child td{border-bottom:0}
 tr.hot td{background:var(--ok-bg)}
 .dayh{font-size:15px;margin:14px 0 6px}
 #earlierWrap{margin-top:8px}
-.later{margin:10px 0 4px}
-.later summary{cursor:pointer;font-weight:600;padding:4px 0}
+.filters{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 14px}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;flex:1 1 100%}
+.tabs button{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:7px 12px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;white-space:nowrap}
+.tabs button b{font-family:var(--mono,monospace);margin-left:4px;color:var(--muted);font-weight:600}
+.tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.tabs button[aria-selected="true"] b{color:inherit}
+.filters .place{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+.filters .place select{min-width:0}
+[data-tab][hidden]{display:none!important}
 #earlierWrap summary{cursor:pointer;color:var(--muted);font-size:13.5px;padding:4px 0}
 .apart{margin-top:6px;font-size:12.5px;color:var(--muted);line-height:1.4}
 @media (max-width:700px){
@@ -214,15 +221,12 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
 
   <div class="grid">
     <div class="col">
-      <div class="section-h"><h2>Today</h2><span class="hint" id="todayHint"></span></div>
-      <div id="today"></div>
-      <details id="earlierWrap" hidden><summary id="earlierSum"></summary><div id="earlier"></div></details>
-      <details id="futureWrap" class="later" hidden><summary id="futureSum"></summary>
-        <p class="hint">Requests for later dates, grouped on their day. They move into Today on that day.</p>
-        <div id="future"></div>
-      </details>
+      <nav class="filters" aria-label="Filter rides">
+        <div class="tabs" id="tabs" role="tablist"></div>
+        <label class="place">Place<select id="placeF"><option value="">Any place</option></select></label>
+      </nav>
 
-      <section class="search" aria-labelledby="sTitle">
+      <section class="search" data-tab="find" aria-labelledby="sTitle">
         <div class="section-h"><h2 id="sTitle">Find passengers for your trip</h2><span class="hint">Where you're going and when you're free. Results update as new requests come in.</span></div>
         <form class="sform" id="searchForm">
           <label>From<select id="sf_from"></select></label>
@@ -243,21 +247,25 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
         </div>
       </section>
 
-      <div id="mineWrap" hidden>
+      <div data-tab="all"><div id="mineWrap" hidden>
         <div class="section-h"><h2>Trips you're taking</h2></div>
         <div id="mine" class="trips"></div>
-      </div>
+      </div></div>
 
-      <div class="section-h"><h2 id="worthTitle">Rides worth taking</h2><span class="hint" id="tripHint"></span><span class="label" id="winLabel"></span></div>
+      <div data-tab="worth"><div class="section-h"><h2 id="worthTitle">Rides worth taking</h2><span class="hint" id="tripHint"></span><span class="label" id="winLabel"></span></div>
       <div id="trips" class="trips"></div>
-      <details id="pastWrap" hidden><summary id="pastSum"></summary><div id="past" class="trips"></div></details>
+      <details id="pastWrap" hidden><summary id="pastSum"></summary><div id="past" class="trips"></div></details></div>
 
 
-      <div class="section-h"><h2>Smaller groups</h2><span class="hint" id="smallHint"></span></div>
+      <div data-tab="small"><div class="section-h"><h2>Smaller groups</h2><span class="hint" id="smallHint"></span></div>
       <div id="skipped"></div>
+      <details id="earlierWrap" hidden><summary id="earlierSum"></summary><div id="earlier"></div></details></div>
 
-      <div class="section-h"><h2>Needs details</h2><span class="hint">Today's requests missing a destination, a time, or where they start. Fill them in and they join a group.</span></div>
-      <div id="details"></div>
+      <div data-tab="details"><div class="section-h"><h2>Needs details</h2><span class="hint">Today's requests missing a destination, a time, or where they start. Fill them in and they join a group.</span></div>
+      <div id="details"></div></div>
+
+      <div data-tab="later"><div class="section-h"><h2>Coming days</h2><span class="hint">Requests for later dates, grouped on their day. They move up on that day.</span></div>
+      <div id="future"></div></div>
 
     </div>
 
@@ -361,22 +369,39 @@ const people = n => n + (n === 1 ? ' person' : ' people');
 const localInput = ms => { const d = new Date(ms - new Date(ms).getTimezoneOffset()*60000); return d.toISOString().slice(0,16); };
 
 // ---------- rendering ----------
+let FT = { tab: 'all', place: '' };
+try { const v = JSON.parse(localStorage.getItem('rd_filter') || 'null'); if (v) FT = { ...FT, ...v }; } catch (e) {}
+function saveFT(){ try { localStorage.setItem('rd_filter', JSON.stringify(FT)); } catch (e) {} }
+// every place a group touches, so "Kyle" also finds San Marcos → Kyle → Austin
+const placesOf = t => [...new Set([t.from, t.dest, ...(t.stopOrder || []), ...(t.pickupCities || []), ...(t.riders || []).flatMap(r => [r.from || S.settings.home, r.dest])].filter(Boolean))];
+const placesOfReq = r => [r.from || S.settings.home, r.dest].filter(Boolean);
+
 function render(){
   const { plan, settings } = S;
   const now = Date.now();
   const live = t => t.depart > now - 15*60000;
   const dayIdx = ms => { const a = new Date(); a.setHours(0,0,0,0); return Math.floor((ms - a.getTime()) / 86400000); };
-  const worthAll = (plan.worth || []).filter(live), mine = (plan.mine || []).filter(live);
-  const worth = worthAll.filter(t => dayIdx(t.depart) <= 0);
-  const past = [...(plan.worth || []), ...(plan.mine || [])].filter(t => !live(t)).sort((a,b) => b.depart - a.depart);
-  const groupsAll = [...worthAll, ...(plan.small || []).filter(live)].sort((a,b) => a.depart - b.depart);
-  const today = groupsAll.filter(t => dayIdx(t.depart) <= 0);          // everything for today, biggest groups marked
-  const small = (plan.small || []).filter(live).filter(t => dayIdx(t.depart) <= 0);
-  const later = groupsAll.filter(t => dayIdx(t.depart) >= 1);
-  const inTrip = new Set(); plan.trips.forEach(t => t.riders.forEach(r => inTrip.add(r.id)));
+  const inPlace = t => !FT.place || placesOf(t).includes(FT.place);
+  const reqInPlace = r => !FT.place || placesOfReq(r).includes(FT.place);
+  const worthAll = (plan.worth || []).filter(live), mineAll = (plan.mine || []).filter(live);
+  const smallAll = (plan.small || []).filter(live);
+  const groupsAll = [...worthAll, ...smallAll].sort((a,b) => a.depart - b.depart);
   const sentToday = r => dayIdx(r.sentAt) === 0;
-  const earlier = plan.requests.filter(r => sentToday(r) && !inTrip.has(r.id) && !R.isIncomplete(r, settings.home) && r.when && r.when < now && dayIdx(r.when) === 0).sort((a,b) => b.when - a.when);
-  const missing = plan.requests.filter(r => R.isIncomplete(r, settings.home) && sentToday(r));
+  const inTrip = new Set(); plan.trips.forEach(t => t.riders.forEach(r => inTrip.add(r.id)));
+
+  // place list for the filter: every place in today's and upcoming groups and requests
+  const allPlaces = [...new Set([...groupsAll.flatMap(placesOf), ...mineAll.flatMap(placesOf), ...plan.requests.filter(sentToday).flatMap(placesOfReq)])].sort();
+  const pf = $('placeF'), pfHtml = '<option value="">Any place</option>' + allPlaces.map(c => '<option' + (c === FT.place ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
+  if (pf.dataset.h !== pfHtml) { pf.innerHTML = pfHtml; pf.dataset.h = pfHtml; }
+  if (FT.place && !allPlaces.includes(FT.place)) { FT.place = ''; pf.value = ''; }
+
+  const mine = mineAll.filter(inPlace);
+  const worth = worthAll.filter(t => dayIdx(t.depart) <= 0).filter(inPlace);
+  const small = smallAll.filter(t => dayIdx(t.depart) <= 0).filter(inPlace);
+  const later = groupsAll.filter(t => dayIdx(t.depart) >= 1).filter(inPlace);
+  const past = [...(plan.worth || []), ...(plan.mine || [])].filter(t => !live(t) && dayIdx(t.depart) === 0).filter(inPlace).sort((a,b) => b.depart - a.depart);
+  const earlier = plan.requests.filter(r => sentToday(r) && !inTrip.has(r.id) && !R.isIncomplete(r, settings.home) && r.when && r.when < now && dayIdx(r.when) === 0).filter(reqInPlace).sort((a,b) => b.when - a.when);
+  const missing = plan.requests.filter(r => R.isIncomplete(r, settings.home) && sentToday(r)).filter(reqInPlace);
 
   $('mode').className = 'mode' + (S.live && S.wa && S.wa.status === 'connected' ? ' live' : '');
   $('mode').textContent = S.live ? (S.wa && S.wa.status === 'connected' ? 'Live from WhatsApp' : 'Server running, WhatsApp not linked') : 'Offline · exported chat';
@@ -385,33 +410,27 @@ function render(){
   $('worthTitle').textContent = 'Rides worth taking (' + settings.minPeople + '+ people)';
   $('winLabel').textContent = (settings.onTheWay !== false ? 'along the route' : 'same place') + ' · within ' + settings.win + ' min · ' + settings.cap + ' seats';
   $('tripHint').textContent = worth.length ? (settings.onTheWay !== false ? 'Passengers along the same route at about the same time. People can get in and out on the way.' : 'Passengers going to the same place at about the same time.') : '';
-  $('todayHint').textContent = 'Every ride asked for today, all places, grouped by time. ★ = ' + settings.minPeople + '+ people.';
-  $('smallHint').textContent = 'Fewer than ' + settings.minPeople + ' people so far. They move up when more people ask.';
+  $('smallHint').textContent = 'Today, fewer than ' + settings.minPeople + ' people so far. They move up when more people ask.';
 
-  $('summary').innerHTML =
-    '<span><b>' + worth.length + '</b>rides with ' + settings.minPeople + '+ people</span>' +
-    '<span><b>' + mine.length + '</b>you’re taking</span>' +
-    '<span><b>' + small.length + '</b>smaller groups</span>' +
-    '<span><b>' + today.length + '</b>groups today</span>' +
-    '<span><b>' + later.length + '</b>coming days</span>' +
-    '<span class="' + (missing.length ? 'warn' : '') + '"><b>' + missing.length + '</b>need details</span>';
+  // tabs (they replace the old count tiles)
+  $('summary').innerHTML = '';
+  const tabs = [['all', 'All', null], ['worth', 'Worth taking', worth.length], ['small', 'Smaller groups', small.length], ['details', 'Needs details', missing.length], ['later', 'Coming days', later.length], ['find', 'Find passengers', null]];
+  $('tabs').innerHTML = tabs.map(([k, label, c]) => '<button type="button" role="tab" data-tabk="' + k + '" aria-selected="' + (FT.tab === k) + '">' + esc(label) + (c != null ? '<b>' + c + '</b>' : '') + '</button>').join('');
+  document.querySelectorAll('main [data-tab]').forEach(el => { const k = el.getAttribute('data-tab'); el.hidden = !(FT.tab === 'all' || k === FT.tab || (k === 'all' && FT.tab === 'worth')); });
 
   $('mineWrap').hidden = !mine.length;
   $('mine').innerHTML = mine.map(t => tripCard(t)).join('');
   $('trips').innerHTML = worth.length ? worth.map(t => tripCard(t)).join('') :
-    '<div class="empty">No group has ' + settings.minPeople + '+ people yet. You’ll get an alert as soon as one does.</div>';
+    '<div class="empty">' + (FT.place ? 'No group with ' + settings.minPeople + '+ people for ' + esc(FT.place) + ' today.' : 'No group has ' + settings.minPeople + '+ people yet. You’ll get an alert as soon as one does.') + '</div>';
   $('pastWrap').hidden = !past.length;
-  $('pastSum').textContent = 'Earlier (' + past.length + ')';
+  $('pastSum').textContent = 'Earlier today (' + past.length + ')';
   $('past').innerHTML = past.map(t => tripCard(t, true)).join('');
 
   fillSearchForm();
   renderSearch();
-  renderSmall(today, 'today', false, 'No ride requests for the rest of today yet.');
-  renderSmall(small, 'skipped', true, 'No other ride requests right now.');
-  $('futureWrap').hidden = !later.length;
-  $('futureSum').textContent = 'Noted for coming days: ' + people(later.reduce((n, t) => n + t.seats, 0)) + ' in ' + later.length + ' group' + (later.length === 1 ? '' : 's');
+  renderSmall(small, 'skipped', true, FT.place ? 'No smaller groups for ' + esc(FT.place) + ' today.' : 'No other ride requests right now.');
   const byDay = {}; later.forEach(t => (byDay[fmtD(t.depart) + ' · ' + new Date(t.depart).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })] ||= []).push(t));
-  $('future').innerHTML = Object.entries(byDay).map(([d, ts], i) => '<h3 class="dayh">' + esc(d) + ' <span class="hint">' + ts.reduce((n, t) => n + t.seats, 0) + ' people</span></h3><div id="fut' + i + '"></div>').join('');
+  $('future').innerHTML = later.length ? Object.entries(byDay).map(([d, ts], i) => '<h3 class="dayh">' + esc(d) + ' <span class="hint">' + people(ts.reduce((n, t) => n + t.seats, 0)) + '</span></h3><div id="fut' + i + '"></div>').join('') : '<div class="empty">No requests for later days' + (FT.place ? ' for ' + esc(FT.place) : '') + '.</div>';
   Object.values(byDay).forEach((ts, i) => renderSmall(ts, 'fut' + i, false));
   $('earlierWrap').hidden = !earlier.length;
   $('earlierSum').textContent = 'Earlier today, time passed (' + earlier.length + ')';
@@ -498,6 +517,9 @@ function renderDetails(missing){
     '</tbody></table></div>';
 }
 
+
+document.getElementById('tabs').addEventListener('click', e => { const b = e.target.closest('[data-tabk]'); if (!b) return; FT.tab = b.getAttribute('data-tabk'); saveFT(); render(); });
+document.getElementById('placeF').addEventListener('change', e => { FT.place = e.target.value; saveFT(); render(); });
 
 function renderAlerts(){
   $('alerts').innerHTML = S.alerts.length ? S.alerts.slice(0, 30).map(a =>
