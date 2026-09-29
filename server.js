@@ -30,6 +30,7 @@ process.on('uncaughtException', e => {
 
 const PORT = +process.env.PORT || 3000;
 const DATA = process.env.DATA_DIR || path.join(__dirname, 'data');   // on a cloud server, point this at a persistent volume
+const KEEP_DAYS = 30;   // messages are kept this long, so a request made days ahead is still there on the day
 fs.mkdirSync(DATA, { recursive: true });
 
 // ---------- persistent state ----------
@@ -101,7 +102,7 @@ const snapshot = () => ({ live: true, cityNames: R.cityNames(cities), wa: { stat
 
 let quietOnce = false;   // set before a recompute that shouldn't alert (e.g. after importing old messages)
 function recompute() {
-  const watched = messages.filter(m => settings.groups.includes(m.group) && m.ts > Date.now() - 7 * 86400000)
+  const watched = messages.filter(m => settings.groups.includes(m.group) && m.ts > Date.now() - KEEP_DAYS * 86400000)
     .map(m => (!m.senderPhone && lidPhones[m.senderJid] ? { ...m, senderPhone: lidPhones[m.senderJid] } : m));
   const a = R.analyze(watched.map(m => ({ ...m, fromMe: isMine(m) })), cities, overrides);
   const now = Date.now();
@@ -217,7 +218,7 @@ function ingest(list, live) {
     if (settings.groups.includes(jid)) added.push(id);
   }
   if (!added.length && !live) return;
-  const cutoff = Date.now() - 7 * 86400000;
+  const cutoff = Date.now() - KEEP_DAYS * 86400000;
   messages = messages.filter(m => m.ts > cutoff).sort((a, b) => a.ts - b.ts);
   save('messages.json', messages);
   recompute();
@@ -439,7 +440,7 @@ app.post('/api/import', express.raw({ type: '*/*', limit: '40mb' }), (req, res) 
   // skip messages already read live (same text within 2 minutes) or imported before
   const known = new Set(messages.map(m => m.id));
   const live = messages.filter(m => m.group === group);
-  const cutoff = Date.now() - 7 * 86400000;
+  const cutoff = Date.now() - KEEP_DAYS * 86400000;
   let added = 0;
   for (const m of parsed) {
     if (m.ts < cutoff || known.has(m.id)) continue;

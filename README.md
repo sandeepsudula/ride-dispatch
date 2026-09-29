@@ -23,7 +23,7 @@ npm start
 2. On your phone: WhatsApp → Settings → Linked devices → Link a device, and scan the QR code.
 3. Tick your ride group under **Groups to watch**, or paste its invite link and click **Join & watch**.
 4. Under **Your settings**, set your seats and the minimum number of people that makes a ride worth it.
-5. Optional: to include requests posted before the app was linked, export the group (WhatsApp → the group → ⋮ → More → **Export chat** → Without media) and choose the file under **Import earlier messages**. The last 7 days are added; duplicates are skipped and no alerts are sent for them.
+5. Optional: to include requests posted before the app was linked, export the group (WhatsApp → the group → ⋮ → More → **Export chat** → Without media) and choose the file under **Import earlier messages**. The last 30 days are added; duplicates are skipped and no alerts are sent for them.
 
 Mac users can double-click `Start Ride Dispatch (Mac).command`; Windows users `Start Ride Dispatch (Windows).bat`. To keep it running with the terminal closed: `npx pm2 start "caffeinate -i node server.js" --name rides` (Mac).
 
@@ -40,7 +40,7 @@ You drive one car and decide yourself whether a trip is worth it. The app finds 
 - **I'm taking this:** marks the ride as yours. New matching passengers are added to it, and you get a reminder before you leave with who to pick up.
 - **Smaller groups** (below your minimum) are listed with **Take anyway**. No alerts for them.
 - **Today** (top of the dashboard, in addition to the sections below): every ride asked for today, every place (rides within San Marcos, New Braunfels, Austin…), grouped by time; ★ marks groups at your minimum. Smaller groups have **Take anyway**, and a line explains why a similar group wasn't put in the same car. "rn", "right now" and "asap" requests stay listed for 90 minutes; a request with no time is treated as needed now and marked "time not given". Requests whose time has passed are under **Earlier today**.
-- **Coming days:** requests for later dates, grouped on their day. Only today's messages are shown under **Messages** (choose "Last 7 days" to see older ones).
+- **Today only:** Today, Rides worth taking, Smaller groups and Needs details show only rides happening today. A request made on an earlier day for today ("Tuesday 5pm" posted on Sunday) is remembered and shows on the day; messages are kept 30 days. Requests for later dates are noted under **Noted for coming days** (folded) and grouped on their day. The dashboard shows ride data only, not the chat messages.
 - **Along the route, both directions** (on by default): riders whose start and destination are both on your route are grouped, in the right order. For example, San Marcos → Kyle → Buda → Austin can pick someone up in Kyle, drop someone in Kyle, and reuse that seat. Each rider is matched to when the car passes their city. Untick it in settings to group only riders going between the same two cities.
 - **One person, one request:** people are recognized by phone number (then WhatsApp ID, then name), so reposts, corrections and name changes don't create duplicates. A newer message replaces the older one when it's the same trip (same destination, or a time within 2 hours); a separate trip like the way back is kept. Nobody appears twice in one car.
 - Drivers offering rides in the group are listed but never used.
