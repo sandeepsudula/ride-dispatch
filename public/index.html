@@ -264,9 +264,6 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
       <div data-tab="details"><div class="section-h"><h2>Needs details</h2><span class="hint">Today's requests missing a destination, a time, or where they start. Fill them in and they join a group.</span></div>
       <div id="details"></div></div>
 
-      <div data-tab="drivers"><div class="section-h"><h2>Drivers offering rides</h2><span class="hint">Other people in the group offering seats, today and coming days. Not grouped with your passengers.</span></div>
-      <div id="drivers"></div></div>
-
       <div data-tab="later"><div class="section-h"><h2>Coming days</h2><span class="hint">Requests for later dates, grouped on their day. They move up on that day.</span></div>
       <div id="future"></div></div>
 
@@ -393,7 +390,7 @@ function render(){
   const inTrip = new Set(); plan.trips.forEach(t => t.riders.forEach(r => inTrip.add(r.id)));
 
   // place list for the filter: every place in today's and upcoming groups and requests
-  const allPlaces = [...new Set([...groupsAll.flatMap(placesOf), ...mineAll.flatMap(placesOf), ...plan.requests.filter(sentToday).flatMap(placesOfReq), ...(plan.drivers || []).flatMap(placesOfReq)])].sort();
+  const allPlaces = [...new Set([...groupsAll.flatMap(placesOf), ...mineAll.flatMap(placesOf), ...plan.requests.filter(sentToday).flatMap(placesOfReq)])].sort();
   const pf = $('placeF'), pfHtml = '<option value="">Any place</option>' + allPlaces.map(c => '<option' + (c === FT.place ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
   if (pf.dataset.h !== pfHtml) { pf.innerHTML = pfHtml; pf.dataset.h = pfHtml; }
   if (FT.place && !allPlaces.includes(FT.place)) { FT.place = ''; pf.value = ''; }
@@ -405,7 +402,6 @@ function render(){
   const past = [...(plan.worth || []), ...(plan.mine || [])].filter(t => !live(t) && dayIdx(t.depart) === 0).filter(inPlace).sort((a,b) => b.depart - a.depart);
   const earlier = plan.requests.filter(r => sentToday(r) && !inTrip.has(r.id) && !R.isIncomplete(r, settings.home) && r.when && r.when < now && dayIdx(r.when) === 0).filter(reqInPlace).sort((a,b) => b.when - a.when);
   const missing = plan.requests.filter(r => R.isIncomplete(r, settings.home) && sentToday(r)).filter(reqInPlace);
-  const drivers = (plan.drivers || []).filter(d => d.when ? d.when > now - 15*60000 : sentToday(d)).filter(reqInPlace).sort((a,b) => (a.when || a.sentAt) - (b.when || b.sentAt));
 
   $('mode').className = 'mode' + (S.live && S.wa && S.wa.status === 'connected' ? ' live' : '');
   $('mode').textContent = S.live ? (S.wa && S.wa.status === 'connected' ? 'Live from WhatsApp' : 'Server running, WhatsApp not linked') : 'Offline · exported chat';
@@ -418,7 +414,7 @@ function render(){
 
   // tabs (they replace the old count tiles)
   $('summary').innerHTML = '';
-  const tabs = [['all', 'All', null], ['worth', 'Worth taking', worth.length], ['small', 'Smaller groups', small.length], ['details', 'Needs details', missing.length], ['later', 'Coming days', later.length], ['drivers', 'Drivers', drivers.length], ['find', 'Find passengers', null]];
+  const tabs = [['all', 'All', null], ['worth', 'Worth taking', worth.length], ['small', 'Smaller groups', small.length], ['details', 'Needs details', missing.length], ['later', 'Coming days', later.length], ['find', 'Find passengers', null]];
   $('tabs').innerHTML = tabs.map(([k, label, c]) => '<button type="button" role="tab" data-tabk="' + k + '" aria-selected="' + (FT.tab === k) + '">' + esc(label) + (c != null ? '<b>' + c + '</b>' : '') + '</button>').join('');
   document.querySelectorAll('main [data-tab]').forEach(el => { const k = el.getAttribute('data-tab'); el.hidden = !(FT.tab === 'all' || k === FT.tab || (k === 'all' && FT.tab === 'worth')); });
 
@@ -440,10 +436,6 @@ function render(){
   $('earlierSum').textContent = 'Earlier today, time passed (' + earlier.length + ')';
   $('earlier').innerHTML = '<div class="tablewrap"><table class="stack"><tbody>' + earlier.map(r => '<tr><td class="mono" data-l="Time">' + esc(whenText(r)) + '</td><td data-l="Route">' + esc(routeText(r)) + '</td><td data-l="Rider"><div>' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + phoneLink(r) + '</div></td></tr>').join('') + '</tbody></table></div>';
   renderDetails(missing);
-  $('drivers').innerHTML = drivers.length ? '<div class="tablewrap"><table class="stack"><thead><tr><th>When</th><th>Route</th><th>Seats</th><th>Driver</th></tr></thead><tbody>' +
-    drivers.map(d => '<tr><td class="mono" data-l="When">' + esc(d.when ? fmtD(d.when) + ' ' + fmtT(d.when) : 'Time not given') + '</td><td data-l="Route">' + esc((d.from || settings.home) + ' → ' + (d.dest || '?')) + '</td>' +
-      '<td class="mono" data-l="Seats">' + (d.seats || '?') + '</td><td data-l="Driver"><div>' + esc(d.sender) + phoneLink(d) + '</div></td></tr>').join('') +
-    '</tbody></table></div>' : '<div class="empty">No one is offering a ride' + (FT.place ? ' for ' + esc(FT.place) : '') + ' right now.</div>';
   renderAlerts();
 }
 
