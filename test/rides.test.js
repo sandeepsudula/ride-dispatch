@@ -297,3 +297,18 @@ console.log('All ride parsing and pooling checks passed (' + trips.length + ' ca
   assert.ok([...F.worth, ...F.small].some(t => t.riders.some(r => r.sender === 'Prasant')));   // still open 1 h after "right now"
   console.log('In-city / now / no time: OK');
 }
+
+// Places inside San Marcos: "country oaks to university" is a ride within town; Suja's repost counts once
+{
+  const cities = R.buildCities(R.DEFAULT_CITIES);
+  const ts = h => new Date('2026-09-29T' + h + ':00-05:00').getTime();
+  const msgs = [['Suja', '18304943619', 'Need a ride from txst to Austin at 4 pm', '14:11'], ['Miraz', '15126654836', 'Need ride sm to Austin 4pm', '14:17'],
+                ['Suja', '18304943619', 'Need a ride from txst to Austin at 4 pm', '14:45'], ['EK', '15122107200', 'Need ride from country oaks to university now', '14:54']]
+    .map(([s, p, t, h], i) => ({ id: 'so' + i, sender: s, senderPhone: p, text: t, ts: ts(h), group: 'g' }));
+  const a = R.analyze(msgs, cities, {});
+  const ek = a.requests.find(r => r.sender === 'EK');
+  assert.ok(ek.local && ek.from === 'San Marcos' && !R.isIncomplete(ek, 'San Marcos'));
+  const F = R.findRides(a.requests, [], { seats: 4, now: ts('15:00'), minPeople: 2 });
+  assert.deepStrictEqual(F.worth.map(t => t.riders.map(r => r.sender).sort().join()), ['Miraz,Suja']);
+  console.log('San Marcos places: EK within San Marcos; Suja + Miraz at 4 PM');
+}

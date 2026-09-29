@@ -48,7 +48,7 @@ You drive one car and decide yourself whether a trip is worth it. The app finds 
 
 ## Cities
 
-Texas cities around San Marcos, areas of Austin (North/South/East/West Austin, Downtown, UT campus, the Domain, Mueller, Riverside, Oak Hill, Circle C, Tech Ridge, Leander, Manor and more), plus the AUS, SAT, IAH and DFW airports, are built in with nicknames (atx, satx, nb, "the airport", and so on). Edit `DEFAULT_CITIES` and `COORDS` in `lib/rides.js` to add more. A city without coordinates still pools, but only with riders going to exactly that city.
+Texas cities around San Marcos, areas of Austin (North/South/East/West Austin, Downtown, UT campus, the Domain, Mueller, Riverside, Oak Hill, Circle C, Tech Ridge, Leander, Manor and more), plus the AUS, SAT, IAH and DFW airports, are built in with nicknames (atx, satx, nb, "the airport", and so on). Places inside San Marcos (campus, "university", Country Oaks, the outlets, the Square, apartment complexes) count as San Marcos, so a ride between two of them is a ride within town. Edit `DEFAULT_CITIES` and `COORDS` in `lib/rides.js` to add more. A city without coordinates still pools, but only with riders going to exactly that city.
 
 ## Files
 
