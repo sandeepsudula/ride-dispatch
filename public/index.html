@@ -168,6 +168,10 @@ tr:last-child td{border-bottom:0}
 .msgfilter{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 8px}
 .msgfilter input{flex:1 1 180px;min-width:0}
 .msgfilter select{flex:0 1 auto;min-width:0}
+tr.hot td{background:var(--ok-bg)}
+.dayh{font-size:15px;margin:14px 0 6px}
+#earlierWrap{margin-top:8px}
+#earlierWrap summary{cursor:pointer;color:var(--muted);font-size:13.5px;padding:4px 0}
 .apart{margin-top:6px;font-size:12.5px;color:var(--muted);line-height:1.4}
 @media (max-width:700px){
   table.stack{min-width:0}
@@ -208,6 +212,14 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
 
   <div class="grid">
     <div class="col">
+      <div class="section-h"><h2>Today</h2><span class="hint" id="smallHint"></span></div>
+      <div id="skipped"></div>
+      <details id="earlierWrap" hidden><summary id="earlierSum"></summary><div id="earlier"></div></details>
+      <div id="futureWrap" hidden>
+        <div class="section-h"><h2>Coming days</h2><span class="hint">Requests for later dates, grouped on their day.</span></div>
+        <div id="future"></div>
+      </div>
+
       <section class="search" aria-labelledby="sTitle">
         <div class="section-h"><h2 id="sTitle">Find passengers for your trip</h2><span class="hint">Where you're going and when you're free. Results update as new requests come in.</span></div>
         <form class="sform" id="searchForm">
@@ -238,8 +250,6 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
       <div id="trips" class="trips"></div>
       <details id="pastWrap" hidden><summary id="pastSum"></summary><div id="past" class="trips"></div></details>
 
-      <div class="section-h"><h2>Smaller groups</h2><span class="hint" id="smallHint"></span></div>
-      <div id="skipped"></div>
 
       <div class="section-h"><h2>Needs details</h2><span class="hint">Ride requests missing a destination, a time, or where they start. Fill them in and they join a group.</span></div>
       <div id="details"></div>
@@ -252,6 +262,7 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
           <select id="mf_from" aria-label="From"><option value="">From: any</option></select>
           <select id="mf_to" aria-label="To"><option value="">To: any</option></select>
           <select id="mf_day" aria-label="Ride day"><option value="">Any day</option><option value="0">Today</option><option value="1">Tomorrow</option><option value="later">Later</option></select>
+          <select id="mf_sent" aria-label="Sent"><option value="today">Sent today</option><option value="all">Last 7 days</option></select>
           <button class="btn small" type="button" id="mf_clear">Clear</button>
         </div>
         <p class="hint" id="mf_count"></p>
@@ -368,10 +379,17 @@ function render(){
   const { plan, settings } = S;
   const now = Date.now();
   const live = t => t.depart > now - 15*60000;
-  const worth = (plan.worth || []).filter(live), mine = (plan.mine || []).filter(live);
+  const dayIdx = ms => { const a = new Date(); a.setHours(0,0,0,0); return Math.floor((ms - a.getTime()) / 86400000); };
+  const worthAll = (plan.worth || []).filter(live), mine = (plan.mine || []).filter(live);
+  const worth = worthAll.filter(t => dayIdx(t.depart) <= 0);
   const past = [...(plan.worth || []), ...(plan.mine || [])].filter(t => !live(t)).sort((a,b) => b.depart - a.depart);
-  const small = (plan.small || []).filter(live);
-  const missing = plan.requests.filter(r => R.isIncomplete(r, settings.home));
+  const groupsAll = [...worthAll, ...(plan.small || []).filter(live)].sort((a,b) => a.depart - b.depart);
+  const small = groupsAll.filter(t => dayIdx(t.depart) <= 0);          // everything for today, biggest groups marked
+  const later = groupsAll.filter(t => dayIdx(t.depart) >= 1);
+  const inTrip = new Set(); plan.trips.forEach(t => t.riders.forEach(r => inTrip.add(r.id)));
+  const sentToday = r => dayIdx(r.sentAt) === 0;
+  const earlier = plan.requests.filter(r => sentToday(r) && !inTrip.has(r.id) && !R.isIncomplete(r, settings.home) && r.when && r.when < now && dayIdx(r.when) === 0).sort((a,b) => b.when - a.when);
+  const missing = plan.requests.filter(r => R.isIncomplete(r, settings.home) && sentToday(r));
 
   $('mode').className = 'mode' + (S.live && S.wa && S.wa.status === 'connected' ? ' live' : '');
   $('mode').textContent = S.live ? (S.wa && S.wa.status === 'connected' ? 'Live from WhatsApp' : 'Server running, WhatsApp not linked') : 'Offline · exported chat';
@@ -380,12 +398,13 @@ function render(){
   $('worthTitle').textContent = 'Rides worth taking (' + settings.minPeople + '+ people)';
   $('winLabel').textContent = (settings.onTheWay !== false ? 'along the route' : 'same place') + ' · within ' + settings.win + ' min · ' + settings.cap + ' seats';
   $('tripHint').textContent = worth.length ? (settings.onTheWay !== false ? 'Passengers along the same route at about the same time. People can get in and out on the way.' : 'Passengers going to the same place at about the same time.') : '';
-  $('smallHint').textContent = 'Fewer than ' + settings.minPeople + ' people so far. They move up when more people ask.';
+  $('smallHint').textContent = 'Every ride asked for today, all places, grouped by time. ★ = ' + settings.minPeople + '+ people.';
 
   $('summary').innerHTML =
     '<span><b>' + worth.length + '</b>rides with ' + settings.minPeople + '+ people</span>' +
     '<span><b>' + mine.length + '</b>you’re taking</span>' +
-    '<span><b>' + small.length + '</b>smaller groups</span>' +
+    '<span><b>' + small.length + '</b>groups today</span>' +
+    '<span><b>' + later.length + '</b>coming days</span>' +
     '<span class="' + (missing.length ? 'warn' : '') + '"><b>' + missing.length + '</b>need details</span>';
 
   $('mineWrap').hidden = !mine.length;
@@ -398,7 +417,14 @@ function render(){
 
   fillSearchForm();
   renderSearch();
-  renderSmall(small);
+  renderSmall(small, 'skipped', true);
+  $('futureWrap').hidden = !later.length;
+  const byDay = {}; later.forEach(t => (byDay[fmtD(t.depart) + ' · ' + new Date(t.depart).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })] ||= []).push(t));
+  $('future').innerHTML = Object.entries(byDay).map(([d, ts], i) => '<h3 class="dayh">' + esc(d) + ' <span class="hint">' + ts.reduce((n, t) => n + t.seats, 0) + ' people</span></h3><div id="fut' + i + '"></div>').join('');
+  Object.values(byDay).forEach((ts, i) => renderSmall(ts, 'fut' + i, false));
+  $('earlierWrap').hidden = !earlier.length;
+  $('earlierSum').textContent = 'Earlier today, time passed (' + earlier.length + ')';
+  $('earlier').innerHTML = '<div class="tablewrap"><table class="stack"><tbody>' + earlier.map(r => '<tr><td class="mono" data-l="Time">' + esc(whenText(r)) + '</td><td data-l="Route">' + esc(routeText(r)) + '</td><td data-l="Rider"><div>' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + phoneLink(r) + '</div></td></tr>').join('') + '</tbody></table></div>';
   renderDetails(missing);
   renderRows();
   renderAlerts();
@@ -442,16 +468,25 @@ function tripCard(t, isPast){
     '</div></div></article>';
 }
 
-function renderSmall(small){
-  const big = S.plan.tooBig || [];
-  $('skipped').innerHTML = (small.length || big.length) ? '<div class="tablewrap"><table class="stack"><thead><tr><th>People</th><th>Route</th><th>Time</th><th>Riders</th><th></th></tr></thead><tbody>' +
-    small.map(t => '<tr><td class="mono" data-l="People">' + t.seats + '</td><td data-l="Route">' + esc(t.path) + '</td>' +
-      '<td class="mono" data-l="Time">' + esc(fmtD(t.depart) + ' ' + fmtT(t.depart)) + '</td>' +
-      '<td data-l="Riders"><div>' + t.riders.map(r => esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + ((t.stopOrder || []).length > 2 ? ' <span class="hint">' + esc((r.from || S.settings.home) + ' → ' + r.dest) + '</span>' : '') + phoneLink(r)).join('<br>') +
+const routeText = r => r.local ? 'Within ' + (r.from || S.settings.home) : (r.from || S.settings.home) + ' → ' + r.dest;
+const whenText = r => r.noTime ? 'Time not given (asked ' + fmtT(r.sentAt) + ')' : r.asap ? 'Now (asked ' + fmtT(r.sentAt) + ')' : fmtT(r.when);
+function groupTime(t){
+  const rs = t.riders || [];
+  if (rs.length && rs.every(r => r.noTime)) return 'Time not given · asked ' + fmtT(Math.min(...rs.map(r => r.sentAt)));
+  if (rs.length && rs.every(r => r.asap)) return 'Now · asked ' + fmtT(Math.min(...rs.map(r => r.sentAt)));
+  return fmtT(t.depart);
+}
+function renderSmall(small, target, withBig){
+  const big = withBig ? (S.plan.tooBig || []).filter(r => r.when > Date.now() - 15*60000) : [];
+  const min = S.settings.minPeople;
+  $(target).innerHTML = (small.length || big.length) ? '<div class="tablewrap"><table class="stack"><thead><tr><th>Time</th><th>Route</th><th>People</th><th>Riders</th><th></th></tr></thead><tbody>' +
+    small.map(t => '<tr' + (t.seats >= min ? ' class="hot"' : '') + '><td class="mono" data-l="Time">' + esc(groupTime(t)) + '</td><td data-l="Route">' + esc(t.path) + '</td>' +
+      '<td class="mono" data-l="People">' + (t.seats >= min ? '★ ' : '') + t.seats + '</td>' +
+      '<td data-l="Riders"><div>' + t.riders.map(r => esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + ((t.stopOrder || []).length > 2 ? ' <span class="hint">' + esc(routeText(r)) + '</span>' : '') + (r.noTime ? ' <span class="hint">(no time given)</span>' : '') + phoneLink(r)).join('<br>') +
       ((t.apart || []).length ? '<div class="apart">' + t.apart.map(x => 'Not with ' + esc(x.who) + ' (' + esc(x.path) + ', ' + esc(fmtT(x.depart)) + '): ' + esc(x.why)).join('<br>') + '</div>' : '') + '</div></td>' +
-      '<td><button class="btn small" type="button" data-keep="' + esc(t.id) + '">Take anyway</button></td></tr>').join('') +
-    big.map(r => '<tr><td class="mono" data-l="People">' + r.seats + '</td><td data-l="Route">' + esc((r.from || S.settings.home) + ' → ' + r.dest) + '</td><td class="mono" data-l="Time">' + esc(fmtD(r.when) + ' ' + fmtT(r.when)) + '</td><td data-l="Riders">' + esc(r.sender) + phoneLink(r) + '</td><td class="hint">More people than your seats</td></tr>').join('') +
-    '</tbody></table></div>' : '<div class="empty">No other ride requests right now.</div>';
+      '<td><button class="btn small' + (t.seats >= min ? ' primary' : '') + '" type="button" data-keep="' + esc(t.id) + '">' + (t.seats >= min ? 'I’m taking this' : 'Take anyway') + '</button></td></tr>').join('') +
+    big.map(r => '<tr><td class="mono" data-l="Time">' + esc(whenText(r)) + '</td><td data-l="Route">' + esc(routeText(r)) + '</td><td class="mono" data-l="People">' + r.seats + '</td><td data-l="Riders"><div>' + esc(r.sender) + phoneLink(r) + '</div></td><td class="hint">More people than your seats</td></tr>').join('') +
+    '</tbody></table></div>' : '<div class="empty">' + (withBig ? 'No ride requests for the rest of today yet.' : '') + '</div>';
 }
 
 let detailsKey = '';
@@ -476,11 +511,13 @@ function renderDetails(missing){
 function renderRows(){
   const p = S.plan, now = Date.now();
   const tripOf = {}; p.trips.forEach(t => t.riders.forEach(r => tripOf[r.id] = t));
-  const rows = [
+  const sentOk = r => $('mf_sent').value === 'all' || (() => { const a = new Date(); a.setHours(0,0,0,0); return r.sentAt >= a.getTime(); })();
+  const rows0 = [
     ...p.requests.map(r => ({ r, kind: R.isIncomplete(r, S.settings.home) ? 'Rider · incomplete' : 'Rider', cls: R.isIncomplete(r, S.settings.home) ? 'red' : '' })),
     ...p.drivers.map(r => ({ r, kind: 'Driver offer', cls: '' })),
     ...(p.cancelled || []).map(r => ({ r, kind: 'Cancelled', cls: '' }))
   ].sort((a,b) => b.r.sentAt - a.r.sentAt);
+  const rows = rows0.filter(x => sentOk(x.r));
   $('msgToggle').textContent = (msgOpen ? 'Hide messages' : 'Show messages') + ' (' + rows.length + ')';
   if (!msgOpen) return;
   // fill the city filters from what's in the messages
@@ -508,7 +545,7 @@ function renderRows(){
 }
 function setMsgOpen(v){ msgOpen = v; $('msgWrap').hidden = !v; try { localStorage.setItem('rd_msgs', v ? '1' : '0'); } catch (e) {} renderRows(); }
 $('msgToggle').addEventListener('click', () => setMsgOpen(!msgOpen));
-['mf_q','mf_kind','mf_from','mf_to','mf_day'].forEach(id => $(id).addEventListener(id === 'mf_q' ? 'input' : 'change', renderRows));
+['mf_q','mf_kind','mf_from','mf_to','mf_day','mf_sent'].forEach(id => $(id).addEventListener(id === 'mf_q' ? 'input' : 'change', renderRows));
 $('mf_clear').addEventListener('click', () => { ['mf_q','mf_kind','mf_from','mf_to','mf_day'].forEach(id => $(id).value = ''); renderRows(); });
 $('msgWrap').hidden = !msgOpen;
 

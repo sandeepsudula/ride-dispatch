@@ -19,7 +19,7 @@ assert.strictEqual(a.requests.length, 9);
 assert.strictEqual(by('Marcus Lee').seats, 2);
 assert.strictEqual(new Date(by('Sofia Ramirez').when).getHours() + ':' + new Date(by('Sofia Ramirez').when).getMinutes(), '9:30');
 assert.strictEqual(by('Mia Torres').dest, 'Austin Airport (AUS)');
-assert.strictEqual(by('Omar Farouk').when, null);
+assert.ok(by('Omar Farouk').noTime && by('Omar Farouk').asap);   // no time given: counted as needed now, marked "time not given"
 assert.strictEqual(by('Kevin Ortiz').from, 'Austin');
 assert.ok(!by('Ethan Brooks') && a.cancelled.some(c => c.sender === 'Ethan Brooks'));
 const trips = R.pool(a.requests, a.drivers, { win: 30, cap: 4 });
@@ -276,4 +276,24 @@ console.log('All ride parsing and pooling checks passed (' + trips.length + ' ca
   const loc = R.analyze([{ id: 'l1', sender: 'X', text: 'need a ride around town in san marcos at 6pm', ts: now, group: 'g' }], cities, {});
   assert.ok(loc.requests[0].local);
   console.log('"around 7pm": Cursed + Rohan grouped');
+}
+
+// In-city rides, "right now", no time given, "8 30 pm"
+{
+  const cities = R.buildCities(R.DEFAULT_CITIES);
+  const ts = h => new Date('2026-09-29T' + h + ':00-05:00').getTime();
+  const msgs = [['Himson', 'Need rideshare rn in sm', '10:01'], ['Prasant', 'Need a ride from San Marcos to New Braunfels right now', '10:05'],
+                ['Abishek', 'Need ride within sm', '12:10'], ['Sam', 'Ride available barton to sm at 8 30 pm', '10:05'], ['Zed', 'need ride to austin tomorrow', '12:11']]
+    .map(([s, t, h], i) => ({ id: 'n' + i, sender: s, senderPhone: '1512000000' + i, text: t, ts: ts(h), group: 'g' }));
+  const a = R.analyze(msgs, cities, {});
+  const by = n => a.requests.find(r => r.sender === n);
+  assert.ok(by('Himson').local && by('Himson').from === 'San Marcos' && by('Himson').asap);
+  assert.ok(by('Prasant').asap && by('Prasant').dest === 'New Braunfels');
+  assert.ok(by('Abishek').local && by('Abishek').noTime && by('Abishek').when === ts('12:10'));
+  assert.ok(R.isIncomplete(by('Zed'), 'San Marcos'));              // "tomorrow" with no time still needs a time
+  const sam = a.drivers.find(r => r.sender === 'Sam');
+  assert.strictEqual(new Date(sam.when).getHours(), 20); assert.strictEqual(sam.from, 'Barton Creek');
+  const F = R.findRides(a.requests, [], { seats: 4, now: ts('11:00'), minPeople: 2 });
+  assert.ok([...F.worth, ...F.small].some(t => t.riders.some(r => r.sender === 'Prasant')));   // still open 1 h after "right now"
+  console.log('In-city / now / no time: OK');
 }
