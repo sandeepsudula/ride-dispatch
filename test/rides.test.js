@@ -312,3 +312,23 @@ console.log('All ride parsing and pooling checks passed (' + trips.length + ' ca
   assert.deepStrictEqual(F.worth.map(t => t.riders.map(r => r.sender).sort().join()), ['Miraz,Suja']);
   console.log('San Marcos places: EK within San Marcos; Suja + Miraz at 4 PM');
 }
+
+// Round trips and loose hours
+{
+  const cities = R.buildCities(R.DEFAULT_CITIES);
+  const ts = h => new Date('2026-09-29T' + h + ':00-05:00').getTime();
+  const msgs = [['Test', 'need ride to austin at 3pm and back at 7pm', '14:00'], ['Abishek', 'Need ride to austin tomorrow at 1pm back and forth', '14:50'],
+                ['Spriha', 'need a ride within san marcos at 9:30', '21:01'], ['Aadi', 'Need ride from austin to san marcos at 12 am  to 1 am tonight', '20:53']]
+    .map(([s, t, h], i) => ({ id: 'rt' + i, sender: s, senderPhone: '1737000000' + i, text: t, ts: ts(h), group: 'g' }));
+  const a = R.analyze(msgs, cities, {});
+  const legs = a.requests.filter(r => r.sender === 'Test');
+  assert.strictEqual(legs.length, 2);
+  assert.ok(legs.some(r => r.dest === 'Austin' && new Date(r.when).getHours() === 15 && r.returnAt));
+  assert.ok(legs.some(r => r.from === 'Austin' && r.dest === 'San Marcos' && new Date(r.when).getHours() === 19 && r.returnOf));
+  const ab = a.requests.filter(r => r.sender === 'Abishek');
+  assert.ok(ab.length === 1 && ab[0].roundTrip && ab[0].returnNote);
+  const sp = a.requests.find(r => r.sender === 'Spriha');
+  assert.ok(sp.local && new Date(sp.when).getHours() === 21 && new Date(sp.when).getMinutes() === 30);   // 9:30 PM, not tomorrow morning
+  assert.strictEqual(new Date(a.requests.find(r => r.sender === 'Aadi').when).getDate(), 30);
+  console.log('Round trips: way there + way back; "9:30" at 9 PM = 9:30 PM');
+}

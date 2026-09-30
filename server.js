@@ -104,7 +104,7 @@ let quietOnce = false;   // set before a recompute that shouldn't alert (e.g. af
 function recompute() {
   const watched = messages.filter(m => settings.groups.includes(m.group) && m.ts > Date.now() - KEEP_DAYS * 86400000)
     .map(m => (!m.senderPhone && lidPhones[m.senderJid] ? { ...m, senderPhone: lidPhones[m.senderJid] } : m));
-  const a = R.analyze(watched.map(m => ({ ...m, fromMe: isMine(m) })), cities, overrides);
+  const a = R.analyze(watched.map(m => ({ ...m, fromMe: isMine(m) })), cities, overrides, { home: settings.home });
   const now = Date.now();
   settings.myTrips = (settings.myTrips || []).filter(t => t.when > now - 12 * 3600000);
   const F = R.findRides(a.requests, settings.myTrips, { seats: settings.cap, home: settings.home, now, win: settings.win, detour: settings.detour, minPeople: settings.minPeople, onTheWay: settings.onTheWay !== false });

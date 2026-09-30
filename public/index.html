@@ -456,7 +456,7 @@ function tripCard(t, isPast){
   const stops = t.stopOrder || null;
   const route = t.local ? esc(t.route) : (stops ? stops.slice(1) : t.drops.map(d => d.name)).map(esc).join('<span class="arr"> → </span>');
   const pick = t.stops.map(g => '<span>' + esc(g[0].pickupLabel || g[0].pickup || 'Spot not given') + '<em>' + esc(g.map(r => r.sender.split(' ')[0]).join(', ')) + '</em></span>').join('');
-  const riders = t.riders.length ? t.riders.map(r => '<span><span class="nm">' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + phoneLink(r) + '</span><em>' + ((t.stopOrder || []).length > 2 || t.drops.length > 1 ? esc((r.from || S.settings.home) + ' → ' + r.dest) + ' · ' : '') + 'wants ' + esc(fmtT(r.when)) + '</em></span>').join('') : '<span class="hint">No passengers yet.</span>';
+  const riders = t.riders.length ? t.riders.map(r => '<span><span class="nm">' + esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + phoneLink(r) + rtNote(r) + '</span><em>' + ((t.stopOrder || []).length > 2 || t.drops.length > 1 ? esc((r.from || S.settings.home) + ' → ' + r.dest) + ' · ' : '') + 'wants ' + esc(fmtT(r.when)) + '</em></span>').join('') : '<span class="hint">No passengers yet.</span>';
   const offer = R.offerMessage(t);
   const legs = t.legs && t.legs.length > 1 ? t.legs.map((l, i) => (i ? '<span class="arr"> → ' + (l.mi - t.legs[i-1].mi) + ' mi → </span>' : '') + esc(l.city)).join('') : '';
   const lead = (t.leadIn ? 'Start: drive ' + t.leadIn.mi + ' mi from ' + esc(t.leadIn.from) + ' to ' + esc(t.leadIn.to) + '. ' : '') + (t.leadOut ? 'Then ' + t.leadOut.mi + ' mi on to ' + esc(t.leadOut.to) + '.' : '');
@@ -477,6 +477,8 @@ function tripCard(t, isPast){
     '</div></div></article>';
 }
 
+// round trips: the way there says when they come back; the way back says it's the return
+function rtNote(r){ return r.returnOf ? ' <span class="hint">(way back)</span>' : r.returnAt ? ' <span class="hint">↔ back ' + esc(fmtD(r.returnAt) === fmtD(r.when) ? fmtT(r.returnAt) : fmtD(r.returnAt) + ' ' + fmtT(r.returnAt)) + '</span>' : r.roundTrip ? ' <span class="hint">↔ round trip, return time not given</span>' : ''; }
 const routeText = r => r.local ? 'Within ' + (r.from || S.settings.home) : (r.from || S.settings.home) + ' → ' + r.dest;
 const whenText = r => r.noTime ? 'Time not given (asked ' + fmtT(r.sentAt) + ')' : r.asap ? 'Now (asked ' + fmtT(r.sentAt) + ')' : fmtT(r.when);
 function groupTime(t){
@@ -491,7 +493,7 @@ function renderSmall(small, target, withBig, emptyText){
   $(target).innerHTML = (small.length || big.length) ? '<div class="tablewrap"><table class="stack"><thead><tr><th>Time</th><th>Route</th><th>People</th><th>Riders</th><th></th></tr></thead><tbody>' +
     small.map(t => '<tr' + (t.seats >= min ? ' class="hot"' : '') + '><td class="mono" data-l="Time">' + esc((withBig && !(t.riders || []).every(r => r.asap) ? fmtD(t.depart) + ' ' : '') + groupTime(t)) + '</td><td data-l="Route">' + esc(t.path) + '</td>' +
       '<td class="mono" data-l="People">' + (t.seats >= min ? '★ ' : '') + t.seats + '</td>' +
-      '<td data-l="Riders"><div>' + t.riders.map(r => esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + ((t.stopOrder || []).length > 2 ? ' <span class="hint">' + esc(routeText(r)) + '</span>' : '') + (r.noTime ? ' <span class="hint">(no time given)</span>' : '') + phoneLink(r)).join('<br>') +
+      '<td data-l="Riders"><div>' + t.riders.map(r => esc(r.sender) + (r.seats > 1 ? ' +' + (r.seats-1) : '') + ((t.stopOrder || []).length > 2 ? ' <span class="hint">' + esc(routeText(r)) + '</span>' : '') + (r.noTime ? ' <span class="hint">(no time given)</span>' : '') + rtNote(r) + phoneLink(r)).join('<br>') +
       ((t.apart || []).length ? '<div class="apart">' + t.apart.map(x => 'Not with ' + esc(x.who) + ' (' + esc(x.path) + ', ' + esc(fmtT(x.depart)) + '): ' + esc(x.why)).join('<br>') + '</div>' : '') + '</div></td>' +
       '<td><button class="btn small' + (t.seats >= min ? ' primary' : '') + '" type="button" data-keep="' + esc(t.id) + '">' + (t.seats >= min ? 'I’m taking this' : 'Take anyway') + '</button></td></tr>').join('') +
     big.map(r => '<tr><td class="mono" data-l="Time">' + esc(whenText(r)) + '</td><td data-l="Route">' + esc(routeText(r)) + '</td><td class="mono" data-l="People">' + r.seats + '</td><td data-l="Riders"><div>' + esc(r.sender) + phoneLink(r) + '</div></td><td class="hint">More people than your seats</td></tr>').join('') +
@@ -762,7 +764,7 @@ function sampleChat(){
 
 function offRecompute(newIds){
   const msgs = R.parseExport(off.chat);
-  const a = R.analyze(msgs, off.cities, off.overrides);
+  const a = R.analyze(msgs, off.cities, off.overrides, { home: S.settings.home });
   const now = Date.now(), st = S.settings;
   st.myTrips = (st.myTrips || []).filter(t => t.when > now - 12*3600000);
   const F = R.findRides(a.requests, st.myTrips, { seats: st.cap, home: st.home, now, win: st.win, detour: st.detour, minPeople: st.minPeople || 3, onTheWay: st.onTheWay !== false });
