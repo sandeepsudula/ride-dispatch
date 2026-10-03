@@ -98,7 +98,8 @@ function broadcast(type, data) {
   for (const res of clients) res.write(payload);
 }
 const snapshot = () => ({ live: true, cityNames: R.cityNames(cities), wa: { status: wa.status, qr: wa.qr, pairCode: wa.status === 'scan' ? wa.pairCode : null, me: wa.me, groups: wa.groups }, settings: { ...settings, phoneAuth: undefined },
-  phone: { on: typeof hasPassword === 'function' && hasPassword(), fromEnv: !!(process.env.DASHBOARD_PASSWORD || '').trim(), port: PORT, addresses: typeof addresses === 'function' ? addresses() : [] }, plan, alerts: alertsLog.slice(0, 30), now: Date.now(), messageCount: messages.filter(m => settings.groups.includes(m.group)).length });
+  phone: { on: typeof hasPassword === 'function' && hasPassword(), fromEnv: !!(process.env.DASHBOARD_PASSWORD || '').trim(), port: PORT, addresses: typeof addresses === 'function' ? addresses() : [] }, plan, alerts: alertsLog.slice(0, 30), now: Date.now(), messageCount: messages.filter(m => settings.groups.includes(m.group)).length,
+  lastMsgAt: messages.reduce((mx, m) => (settings.groups.includes(m.group) && m.ts > mx ? m.ts : mx), 0) });
 
 let quietOnce = false;   // set before a recompute that shouldn't alert (e.g. after importing old messages)
 function recompute() {

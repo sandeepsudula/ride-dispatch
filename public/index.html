@@ -171,6 +171,9 @@ tr:last-child td{border-bottom:0}
 tr.hot td{background:var(--ok-bg)}
 .dayh{font-size:15px;margin:14px 0 6px}
 #earlierWrap{margin-top:8px}
+.statusnote{border:1px solid var(--line);border-left:4px solid var(--amber);background:var(--surface);border-radius:10px;padding:10px 12px;margin:0 0 12px;font-size:13.5px}
+.statusnote.ok{border-left-color:var(--ok);color:var(--muted)}
+.statusnote b{display:block}
 .filters{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 14px}
 .tabs{display:flex;flex-wrap:wrap;gap:6px;flex:1 1 100%}
 .tabs button{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:99px;padding:7px 12px;font:inherit;font-size:13.5px;font-weight:600;cursor:pointer;white-space:nowrap}
@@ -221,10 +224,33 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
 
   <div class="grid">
     <div class="col">
+      <div id="statusNote" class="statusnote" hidden></div>
       <nav class="filters" aria-label="Filter rides">
         <div class="tabs" id="tabs" role="tablist"></div>
         <label class="place">Place<select id="placeF"><option value="">Any place</option></select></label>
+        <button class="btn small" type="button" id="clearF" hidden>Show everything</button>
       </nav>
+
+
+      <div data-tab="all"><div id="mineWrap" hidden>
+        <div class="section-h"><h2>Trips you're taking</h2></div>
+        <div id="mine" class="trips"></div>
+      </div></div>
+
+      <div data-tab="worth"><div class="section-h"><h2 id="worthTitle">Rides worth taking</h2><span class="hint" id="tripHint"></span><span class="label" id="winLabel"></span></div>
+      <div id="trips" class="trips"></div>
+      <details id="pastWrap" hidden><summary id="pastSum"></summary><div id="past" class="trips"></div></details></div>
+
+
+      <div data-tab="small"><div class="section-h"><h2>Smaller groups</h2><span class="hint" id="smallHint"></span></div>
+      <div id="skipped"></div>
+      <details id="earlierWrap" hidden><summary id="earlierSum"></summary><div id="earlier"></div></details></div>
+
+      <div data-tab="details"><div class="section-h"><h2>Needs details</h2><span class="hint">Today's requests missing a destination, a time, or where they start. Fill them in and they join a group.</span></div>
+      <div id="details"></div></div>
+
+      <div data-tab="later"><div class="section-h"><h2>Coming days</h2><span class="hint">Requests for later dates, grouped on their day. They move up on that day.</span></div>
+      <div id="future"></div></div>
 
       <section class="search" data-tab="find" aria-labelledby="sTitle">
         <div class="section-h"><h2 id="sTitle">Find passengers for your trip</h2><span class="hint">Where you're going and when you're free. Results update as new requests come in.</span></div>
@@ -246,26 +272,6 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
           <div id="searchAll"></div>
         </div>
       </section>
-
-      <div data-tab="all"><div id="mineWrap" hidden>
-        <div class="section-h"><h2>Trips you're taking</h2></div>
-        <div id="mine" class="trips"></div>
-      </div></div>
-
-      <div data-tab="worth"><div class="section-h"><h2 id="worthTitle">Rides worth taking</h2><span class="hint" id="tripHint"></span><span class="label" id="winLabel"></span></div>
-      <div id="trips" class="trips"></div>
-      <details id="pastWrap" hidden><summary id="pastSum"></summary><div id="past" class="trips"></div></details></div>
-
-
-      <div data-tab="small"><div class="section-h"><h2>Smaller groups</h2><span class="hint" id="smallHint"></span></div>
-      <div id="skipped"></div>
-      <details id="earlierWrap" hidden><summary id="earlierSum"></summary><div id="earlier"></div></details></div>
-
-      <div data-tab="details"><div class="section-h"><h2>Needs details</h2><span class="hint">Today's requests missing a destination, a time, or where they start. Fill them in and they join a group.</span></div>
-      <div id="details"></div></div>
-
-      <div data-tab="later"><div class="section-h"><h2>Coming days</h2><span class="hint">Requests for later dates, grouped on their day. They move up on that day.</span></div>
-      <div id="future"></div></div>
 
     </div>
 
@@ -370,8 +376,7 @@ const localInput = ms => { const d = new Date(ms - new Date(ms).getTimezoneOffse
 
 // ---------- rendering ----------
 let FT = { tab: 'all', place: '' };
-try { const v = JSON.parse(localStorage.getItem('rd_filter') || 'null'); if (v) FT = { ...FT, ...v }; } catch (e) {}
-function saveFT(){ try { localStorage.setItem('rd_filter', JSON.stringify(FT)); } catch (e) {} }
+function saveFT(){}   // the filter starts at All / Any place on every load, so rides are never hidden by an old choice
 // every place a group touches, so "Kyle" also finds San Marcos → Kyle → Austin
 const placesOf = t => [...new Set([t.from, t.dest, ...(t.stopOrder || []), ...(t.pickupCities || []), ...(t.riders || []).flatMap(r => [r.from || S.settings.home, r.dest])].filter(Boolean))];
 const placesOfReq = r => [r.from || S.settings.home, r.dest].filter(Boolean);
@@ -411,6 +416,19 @@ function render(){
   $('winLabel').textContent = (settings.onTheWay !== false ? 'along the route' : 'same place') + ' · within ' + settings.win + ' min · ' + settings.cap + ' seats';
   $('tripHint').textContent = worth.length ? (settings.onTheWay !== false ? 'Passengers along the same route at about the same time. People can get in and out on the way.' : 'Passengers going to the same place at about the same time.') : '';
   $('smallHint').textContent = 'Today, fewer than ' + settings.minPeople + ' people so far. They move up when more people ask.';
+
+  // what the app is reading right now, so an empty page explains itself
+  const sn = $('statusNote'), wa = S.wa || {}, watched = (settings.groups || []).length;
+  if (S.live) {
+    const last = S.lastMsgAt ? 'Last message read: ' + fmtD(S.lastMsgAt) + ' ' + fmtT(S.lastMsgAt) + '.' : 'No messages read yet.';
+    let msg = '', ok = false;
+    if (wa.status !== 'connected') msg = '<b>WhatsApp is not connected (' + esc(wa.status === 'scan' ? 'needs linking' : wa.status || 'starting') + ')</b>New messages are not being read. Open the WhatsApp panel below to link again. ' + last;
+    else if (!watched) msg = '<b>No group is being watched</b>Tick your ride group in the WhatsApp panel below.';
+    else if (!S.lastMsgAt || now - S.lastMsgAt > 6 * 3600000) msg = '<b>No new messages for a while</b>' + last + ' If the group has newer messages, restart the app in Termux.';
+    else { msg = 'Reading the group live. ' + last; ok = true; }
+    sn.hidden = false; sn.className = 'statusnote' + (ok ? ' ok' : ''); sn.innerHTML = msg;
+  } else sn.hidden = true;
+  $('clearF').hidden = FT.tab === 'all' && !FT.place;
 
   // tabs (they replace the old count tiles)
   $('summary').innerHTML = '';
@@ -521,6 +539,7 @@ function renderDetails(missing){
 
 
 document.getElementById('tabs').addEventListener('click', e => { const b = e.target.closest('[data-tabk]'); if (!b) return; FT.tab = b.getAttribute('data-tabk'); saveFT(); render(); });
+document.getElementById('clearF').addEventListener('click', () => { FT = { tab: 'all', place: '' }; document.getElementById('placeF').value = ''; render(); });
 document.getElementById('placeF').addEventListener('change', e => { FT.place = e.target.value; saveFT(); render(); });
 
 function renderAlerts(){

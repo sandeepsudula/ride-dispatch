@@ -332,3 +332,17 @@ console.log('All ride parsing and pooling checks passed (' + trips.length + ' ca
   assert.strictEqual(new Date(a.requests.find(r => r.sender === 'Aadi').when).getDate(), 30);
   console.log('Round trips: way there + way back; "9:30" at 9 PM = 9:30 PM');
 }
+
+// "with sm" (typo for within sm) and Spring Branch round trip
+{
+  const cities = R.buildCities(R.DEFAULT_CITIES);
+  const ts = h => new Date('2026-10-03T' + h + ':00-05:00').getTime();
+  const msgs = [['Hloo', 'Need a ride at 4:30pm with sm', '16:04'], ['Karu', 'Need a ride from sm to spring branch tomorrow at 5am and return at 6pm', '16:14'], ['Bo', 'need ride to austin at 5pm with 2 friends', '16:00']]
+    .map(([s, t, h], i) => ({ id: 'ws' + i, sender: s, senderPhone: '1737111000' + i, text: t, ts: ts(h), group: 'g' }));
+  const a = R.analyze(msgs, cities, {});
+  assert.ok(a.requests.find(r => r.sender === 'Hloo').local);
+  assert.ok(!a.requests.find(r => r.sender === 'Bo').local);
+  const karu = a.requests.filter(r => r.sender === 'Karu');
+  assert.ok(karu.length === 2 && karu.some(r => r.dest === 'Spring Branch') && karu.some(r => r.from === 'Spring Branch' && new Date(r.when).getHours() === 18));
+  console.log('"with sm" = within San Marcos; Spring Branch there and back');
+}
