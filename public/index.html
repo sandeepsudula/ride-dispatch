@@ -422,7 +422,7 @@ function render(){
   if (S.live) {
     const last = S.lastMsgAt ? 'Last message read: ' + fmtD(S.lastMsgAt) + ' ' + fmtT(S.lastMsgAt) + '.' : 'No messages read yet.';
     let msg = '', ok = false;
-    if (wa.status !== 'connected') msg = '<b>WhatsApp is not connected (' + esc(wa.status === 'scan' ? 'needs linking' : wa.status || 'starting') + ')</b>New messages are not being read. Open the WhatsApp panel below to link again. ' + last;
+    if (wa.status !== 'connected') msg = '<b>WhatsApp is not connected (' + esc(wa.status === 'scan' ? 'needs linking' : wa.status || 'starting') + ')</b>New messages are not being read. ' + last + '<div class="row-btns" style="margin-top:8px"><button class="btn small primary" type="button" id="goLink">Link WhatsApp now</button></div>';
     else if (!watched) msg = '<b>No group is being watched</b>Tick your ride group in the WhatsApp panel below.';
     else if (!S.lastMsgAt || now - S.lastMsgAt > 6 * 3600000) msg = '<b>No new messages for a while</b>' + last + ' If the group has newer messages, restart the app in Termux.';
     else { msg = 'Reading the group live. ' + last; ok = true; }
@@ -539,6 +539,7 @@ function renderDetails(missing){
 
 
 document.getElementById('tabs').addEventListener('click', e => { const b = e.target.closest('[data-tabk]'); if (!b) return; FT.tab = b.getAttribute('data-tabk'); saveFT(); render(); });
+document.addEventListener('click', e => { if (e.target.id === 'goLink') { const el = document.getElementById('source'); el.scrollIntoView({ behavior: 'smooth', block: 'start' }); const ph = document.getElementById('pairPhone'); if (ph) setTimeout(() => ph.focus(), 400); } });
 document.getElementById('clearF').addEventListener('click', () => { FT = { tab: 'all', place: '' }; document.getElementById('placeF').value = ''; render(); });
 document.getElementById('placeF').addEventListener('change', e => { FT.place = e.target.value; saveFT(); render(); });
 
