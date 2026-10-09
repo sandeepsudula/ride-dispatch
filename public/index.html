@@ -180,6 +180,12 @@ tr.hot td{background:var(--ok-bg)}
 .tabs button b{font-family:var(--mono,monospace);margin-left:4px;color:var(--muted);font-weight:600}
 .tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .tabs button[aria-selected="true"] b{color:inherit}
+.rfilter{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:0 0 12px}
+.rrow{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;margin-bottom:6px}
+.rrow label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);flex:1 1 120px;min-width:0}
+.rrow select,.rrow input{min-width:0;width:100%}
+.rrow .swap{flex:0 0 auto}
+#ff_note{margin:2px 0 0}
 .places{display:flex;gap:8px;align-items:flex-start;flex:1 1 100%}
 .plabel{font-size:13px;color:var(--muted);padding-top:7px;flex:0 0 auto}
 .pchips{display:flex;flex-wrap:wrap;gap:6px}
@@ -229,11 +235,22 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
 
   <div class="grid">
     <div class="col">
+      <section class="rfilter" aria-label="Filter rides by route and time">
+        <div class="rrow">
+          <label>From<select id="ff_from"><option value="">Any</option></select></label>
+          <button class="btn small swap" type="button" id="ff_swap" title="Swap From and To" aria-label="Swap From and To">⇄</button>
+          <label>To<select id="ff_to"><option value="">Any</option></select></label>
+        </div>
+        <div class="rrow">
+          <label>Time from<input id="ff_start" type="time"></label>
+          <label>to<input id="ff_end" type="time"></label>
+          <button class="btn small" type="button" id="clearF" hidden>Clear</button>
+        </div>
+        <p class="hint" id="ff_note"></p>
+      </section>
       <div id="statusNote" class="statusnote" hidden></div>
       <nav class="filters" aria-label="Filter rides">
         <div class="tabs" id="tabs" role="tablist"></div>
-        <div class="places" role="group" aria-label="Place"><span class="plabel">Place</span><div id="placeF" class="pchips"></div></div>
-        <button class="btn small" type="button" id="clearF" hidden>Show everything</button>
       </nav>
 
 
@@ -380,7 +397,7 @@ const people = n => n + (n === 1 ? ' person' : ' people');
 const localInput = ms => { const d = new Date(ms - new Date(ms).getTimezoneOffset()*60000); return d.toISOString().slice(0,16); };
 
 // ---------- rendering ----------
-let FT = { tab: 'all', place: '' };
+let FT = { tab: 'all', from: '', to: '', start: '', end: '' };
 function saveFT(){}   // the filter starts at All / Any place on every load, so rides are never hidden by an old choice
 // every place a group touches, so "Kyle" also finds San Marcos → Kyle → Austin
 const placesOf = t => [...new Set([t.from, t.dest, ...(t.stopOrder || []), ...(t.pickupCities || []), ...(t.riders || []).flatMap(r => [r.from || S.settings.home, r.dest])].filter(Boolean))];
@@ -391,8 +408,19 @@ function render(){
   const now = Date.now();
   const live = t => t.depart > now - 15*60000;
   const dayIdx = ms => { const a = new Date(); a.setHours(0,0,0,0); return Math.floor((ms - a.getTime()) / 86400000); };
-  const inPlace = t => !FT.place || placesOf(t).includes(FT.place);
-  const reqInPlace = r => !FT.place || placesOfReq(r).includes(FT.place);
+  // Route + time filter. A group matches when it passes From before To (riders getting in or out on the way count),
+  // and leaves between the two times (a window like 10 PM–2 AM crosses midnight).
+  const mins = v => { if (!v) return null; const [h, m] = v.split(':').map(Number); return h * 60 + m; };
+  const fs = mins(FT.start), fe = mins(FT.end);
+  const timeOk = ms => { if (fs == null && fe == null) return true; const d = new Date(ms), x = d.getHours() * 60 + d.getMinutes();
+    const a = fs == null ? 0 : fs, b = fe == null ? 1439 : fe; return a <= b ? x >= a && x <= b : x >= a || x <= b; };
+  const routeOk = order => { if (!FT.from && !FT.to) return true;
+    const i = FT.from ? order.indexOf(FT.from) : 0, k = FT.to ? order.lastIndexOf(FT.to) : order.length - 1;
+    if (i < 0 || k < 0) return false;
+    return FT.from && FT.to && FT.from === FT.to ? true : i < k || (!FT.from || !FT.to); };
+  const orderOf = t => t.local ? [t.from] : (t.stopOrder || [t.from, ...(t.drops || []).map(d => d.name)]);
+  const inPlace = t => timeOk(t.depart) && routeOk(orderOf(t));
+  const reqInPlace = r => (!r.when || timeOk(r.when)) && routeOk(r.local ? [r.from || S.settings.home] : [r.from || S.settings.home, r.dest].filter(Boolean));
   const worthAll = (plan.worth || []).filter(live), mineAll = (plan.mine || []).filter(live);
   const smallAll = (plan.small || []).filter(live);
   const groupsAll = [...worthAll, ...smallAll].sort((a,b) => a.depart - b.depart);
@@ -400,10 +428,11 @@ function render(){
   const inTrip = new Set(); plan.trips.forEach(t => t.riders.forEach(r => inTrip.add(r.id)));
 
   // place list for the filter: every place in today's and upcoming groups and requests
-  const allPlaces = [...new Set([...groupsAll.flatMap(placesOf), ...mineAll.flatMap(placesOf), ...plan.requests.filter(sentToday).flatMap(placesOfReq)])].sort();
-  if (FT.place && !allPlaces.includes(FT.place)) FT.place = '';
-  const pf = $('placeF'), pfHtml = ['', ...allPlaces].map(c => '<button type="button" data-place="' + esc(c) + '" aria-pressed="' + (c === FT.place) + '">' + esc(c || 'Any place') + '</button>').join('');
-  if (pf.dataset.h !== pfHtml) { pf.innerHTML = pfHtml; pf.dataset.h = pfHtml; }
+  // the city lists never change while you're picking, so the dropdown stays open on phones
+  const cityOpts = (S.cityNames || []).join('|');
+  ['ff_from', 'ff_to'].forEach(id => { const el = $(id); if (el.dataset.h !== cityOpts) { el.innerHTML = '<option value="">Any</option>' + (S.cityNames || []).map(c => '<option>' + esc(c) + '</option>').join(''); el.dataset.h = cityOpts; }
+    el.value = id === 'ff_from' ? FT.from : FT.to; });
+  const filtered = !!(FT.from || FT.to || FT.start || FT.end);
 
   const mine = mineAll.filter(inPlace);
   const worth = worthAll.filter(t => dayIdx(t.depart) <= 0).filter(inPlace);
@@ -433,7 +462,8 @@ function render(){
     else { msg = 'Reading the group live. ' + last; ok = true; }
     sn.hidden = false; sn.className = 'statusnote' + (ok ? ' ok' : ''); sn.innerHTML = msg;
   } else sn.hidden = true;
-  $('clearF').hidden = FT.tab === 'all' && !FT.place;
+  $('clearF').hidden = !filtered;
+  $('ff_note').textContent = filtered ? 'Showing ' + (FT.from || 'anywhere') + ' → ' + (FT.to || 'anywhere') + (FT.start || FT.end ? ', leaving ' + (FT.start ? fmtHM(FT.start) : 'any time') + '–' + (FT.end ? fmtHM(FT.end) : 'any time') : '') + '. Riders getting in or out on the way are included.' : '';
 
   // tabs (they replace the old count tiles)
   $('summary').innerHTML = '';
@@ -444,16 +474,16 @@ function render(){
   $('mineWrap').hidden = !mine.length;
   $('mine').innerHTML = mine.map(t => tripCard(t)).join('');
   $('trips').innerHTML = worth.length ? worth.map(t => tripCard(t)).join('') :
-    '<div class="empty">' + (FT.place ? 'No group with ' + settings.minPeople + '+ people for ' + esc(FT.place) + ' today.' : 'No group has ' + settings.minPeople + '+ people yet. You’ll get an alert as soon as one does.') + '</div>';
+    '<div class="empty">' + (filtered ? 'No group with ' + settings.minPeople + '+ people for this route and time today.' : 'No group has ' + settings.minPeople + '+ people yet. You’ll get an alert as soon as one does.') + '</div>';
   $('pastWrap').hidden = !past.length;
   $('pastSum').textContent = 'Earlier today (' + past.length + ')';
   $('past').innerHTML = past.map(t => tripCard(t, true)).join('');
 
   fillSearchForm();
   renderSearch();
-  renderSmall(small, 'skipped', true, FT.place ? 'No smaller groups for ' + esc(FT.place) + ' today.' : 'No other ride requests right now.');
+  renderSmall(small, 'skipped', true, filtered ? 'No smaller groups for this route and time today.' : 'No other ride requests right now.');
   const byDay = {}; later.forEach(t => (byDay[fmtD(t.depart) + ' · ' + new Date(t.depart).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })] ||= []).push(t));
-  $('future').innerHTML = later.length ? Object.entries(byDay).map(([d, ts], i) => '<h3 class="dayh">' + esc(d) + ' <span class="hint">' + people(ts.reduce((n, t) => n + t.seats, 0)) + '</span></h3><div id="fut' + i + '"></div>').join('') : '<div class="empty">No requests for later days' + (FT.place ? ' for ' + esc(FT.place) : '') + '.</div>';
+  $('future').innerHTML = later.length ? Object.entries(byDay).map(([d, ts], i) => '<h3 class="dayh">' + esc(d) + ' <span class="hint">' + people(ts.reduce((n, t) => n + t.seats, 0)) + '</span></h3><div id="fut' + i + '"></div>').join('') : '<div class="empty">No requests for later days' + (filtered ? ' for this route and time' : '') + '.</div>';
   Object.values(byDay).forEach((ts, i) => renderSmall(ts, 'fut' + i, false));
   $('earlierWrap').hidden = !earlier.length;
   $('earlierSum').textContent = 'Earlier today, time passed (' + earlier.length + ')';
@@ -545,8 +575,11 @@ function renderDetails(missing){
 
 document.getElementById('tabs').addEventListener('click', e => { const b = e.target.closest('[data-tabk]'); if (!b) return; FT.tab = b.getAttribute('data-tabk'); saveFT(); render(); });
 document.addEventListener('click', e => { if (e.target.id === 'goLink') { const el = document.getElementById('source'); el.scrollIntoView({ behavior: 'smooth', block: 'start' }); const ph = document.getElementById('pairPhone'); if (ph) setTimeout(() => ph.focus(), 400); } });
-document.getElementById('clearF').addEventListener('click', () => { FT = { tab: 'all', place: '' }; render(); });
-document.getElementById('placeF').addEventListener('click', e => { const b = e.target.closest('[data-place]'); if (!b) return; const v = b.getAttribute('data-place'); FT.place = FT.place === v ? '' : v; render(); });
+const fmtHM = v => { const [h, m] = v.split(':').map(Number); return ((h + 11) % 12 + 1) + ':' + String(m).padStart(2, '0') + (h < 12 ? ' AM' : ' PM'); };
+document.getElementById('clearF').addEventListener('click', () => { FT = { ...FT, from: '', to: '', start: '', end: '' }; ['ff_start','ff_end'].forEach(id => document.getElementById(id).value = ''); render(); });
+['ff_from','ff_to'].forEach(id => document.getElementById(id).addEventListener('change', e => { FT[id === 'ff_from' ? 'from' : 'to'] = e.target.value; render(); }));
+['ff_start','ff_end'].forEach(id => document.getElementById(id).addEventListener('change', e => { FT[id === 'ff_start' ? 'start' : 'end'] = e.target.value; render(); }));
+document.getElementById('ff_swap').addEventListener('click', () => { const f = FT.from; FT.from = FT.to; FT.to = f; render(); });
 
 function renderAlerts(){
   $('alerts').innerHTML = S.alerts.length ? S.alerts.slice(0, 30).map(a =>
