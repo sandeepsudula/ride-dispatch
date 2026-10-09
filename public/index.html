@@ -180,6 +180,11 @@ tr.hot td{background:var(--ok-bg)}
 .tabs button b{font-family:var(--mono,monospace);margin-left:4px;color:var(--muted);font-weight:600}
 .tabs button[aria-selected="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
 .tabs button[aria-selected="true"] b{color:inherit}
+.places{display:flex;gap:8px;align-items:flex-start;flex:1 1 100%}
+.plabel{font-size:13px;color:var(--muted);padding-top:7px;flex:0 0 auto}
+.pchips{display:flex;flex-wrap:wrap;gap:6px}
+.pchips button{border:1px solid var(--line);background:var(--surface-2,var(--surface));color:var(--ink);border-radius:99px;padding:5px 10px;font:inherit;font-size:13px;cursor:pointer}
+.pchips button[aria-pressed="true"]{background:var(--ok,#1d6b4a);color:#fff;border-color:transparent}
 .filters .place{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
 .filters .place select{min-width:0}
 [data-tab][hidden]{display:none!important}
@@ -227,7 +232,7 @@ details summary{cursor:pointer;font-weight:700;color:var(--muted);padding-block:
       <div id="statusNote" class="statusnote" hidden></div>
       <nav class="filters" aria-label="Filter rides">
         <div class="tabs" id="tabs" role="tablist"></div>
-        <label class="place">Place<select id="placeF"><option value="">Any place</option></select></label>
+        <div class="places" role="group" aria-label="Place"><span class="plabel">Place</span><div id="placeF" class="pchips"></div></div>
         <button class="btn small" type="button" id="clearF" hidden>Show everything</button>
       </nav>
 
@@ -396,9 +401,9 @@ function render(){
 
   // place list for the filter: every place in today's and upcoming groups and requests
   const allPlaces = [...new Set([...groupsAll.flatMap(placesOf), ...mineAll.flatMap(placesOf), ...plan.requests.filter(sentToday).flatMap(placesOfReq)])].sort();
-  const pf = $('placeF'), pfHtml = '<option value="">Any place</option>' + allPlaces.map(c => '<option' + (c === FT.place ? ' selected' : '') + '>' + esc(c) + '</option>').join('');
+  if (FT.place && !allPlaces.includes(FT.place)) FT.place = '';
+  const pf = $('placeF'), pfHtml = ['', ...allPlaces].map(c => '<button type="button" data-place="' + esc(c) + '" aria-pressed="' + (c === FT.place) + '">' + esc(c || 'Any place') + '</button>').join('');
   if (pf.dataset.h !== pfHtml) { pf.innerHTML = pfHtml; pf.dataset.h = pfHtml; }
-  if (FT.place && !allPlaces.includes(FT.place)) { FT.place = ''; pf.value = ''; }
 
   const mine = mineAll.filter(inPlace);
   const worth = worthAll.filter(t => dayIdx(t.depart) <= 0).filter(inPlace);
@@ -540,8 +545,8 @@ function renderDetails(missing){
 
 document.getElementById('tabs').addEventListener('click', e => { const b = e.target.closest('[data-tabk]'); if (!b) return; FT.tab = b.getAttribute('data-tabk'); saveFT(); render(); });
 document.addEventListener('click', e => { if (e.target.id === 'goLink') { const el = document.getElementById('source'); el.scrollIntoView({ behavior: 'smooth', block: 'start' }); const ph = document.getElementById('pairPhone'); if (ph) setTimeout(() => ph.focus(), 400); } });
-document.getElementById('clearF').addEventListener('click', () => { FT = { tab: 'all', place: '' }; document.getElementById('placeF').value = ''; render(); });
-document.getElementById('placeF').addEventListener('change', e => { FT.place = e.target.value; saveFT(); render(); });
+document.getElementById('clearF').addEventListener('click', () => { FT = { tab: 'all', place: '' }; render(); });
+document.getElementById('placeF').addEventListener('click', e => { const b = e.target.closest('[data-place]'); if (!b) return; const v = b.getAttribute('data-place'); FT.place = FT.place === v ? '' : v; render(); });
 
 function renderAlerts(){
   $('alerts').innerHTML = S.alerts.length ? S.alerts.slice(0, 30).map(a =>
