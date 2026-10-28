@@ -48,10 +48,14 @@ export function mountForm({ createFormStore, FORM_ERROR }, root, formId) {
     const id = "f-" + f.target;
     const common = { id, name: f.target, "aria-describedby": "err-" + f.target, disabled: f.readOnly || undefined, required: undefined };
     const v = values[f.target];
-    const onBlur = () => store.validate(f.target);
+    // Checked on leaving a field, a moment later: an error appearing or disappearing at once would
+    // move the button under a visitor's pointer between press and release, and the click is lost.
+    const onBlur = () => setTimeout(() => store.validate(f.target), 250);
+    // While a field shows an error, re-check it as the visitor types, so the message clears early.
+    const set = (value) => { store.setValue(f.target, value); if (store.getState().errors[f.target]) store.validate(f.target); };
     switch (f.control) {
       case "textarea":
-        return h("textarea", { ...common, rows: 4, placeholder: f.placeholder, oninput: (e) => store.setValue(f.target, e.target.value), onblur: onBlur }, String(v ?? ""));
+        return h("textarea", { ...common, rows: 4, placeholder: f.placeholder, oninput: (e) => set(e.target.value), onblur: onBlur }, String(v ?? ""));
       case "select": {
         const sel = h("select", { ...common, onchange: (e) => { store.setValue(f.target, e.target.value); store.validate(f.target); }, onblur: onBlur },
           h("option", { value: "" }, f.placeholder || "Choose one"),
@@ -82,12 +86,12 @@ export function mountForm({ createFormStore, FORM_ERROR }, root, formId) {
       case "number":
       case "rating":
         return h("input", { ...common, type: "number", inputmode: "decimal", min: f.validation.minimum, max: f.validation.maximum, step: f.validation.multipleOf,
-          value: v ?? "", placeholder: f.placeholder, oninput: (e) => store.setValue(f.target, e.target.value), onblur: onBlur });
+          value: v ?? "", placeholder: f.placeholder, oninput: (e) => set(e.target.value), onblur: onBlur });
       case "date":
       case "time":
       case "datetime":
         return h("input", { ...common, type: f.control === "datetime" ? "datetime-local" : f.control, min: f.validation.minDate, max: f.validation.maxDate,
-          value: v ?? "", oninput: (e) => store.setValue(f.target, e.target.value), onblur: onBlur });
+          value: v ?? "", oninput: (e) => set(e.target.value), onblur: onBlur });
       case "text":
       case "email":
       case "url":
@@ -98,7 +102,7 @@ export function mountForm({ createFormStore, FORM_ERROR }, root, formId) {
           ({ CONTACTS_FIRST_NAME: "given-name", CONTACTS_LAST_NAME: "family-name", CONTACTS_COMPANY: "organization" }[f.identifier]);
         return h("input", { ...common, type, autocomplete: ac, value: v ?? "",
           placeholder: f.placeholder || (f.control === "phone" && DIAL[f.phoneCountry] ? "(512) 555-0123" : undefined),
-          oninput: (e) => store.setValue(f.target, f.control === "phone" ? toE164(e.target.value, f.phoneCountry) : e.target.value), onblur: onBlur });
+          oninput: (e) => set(f.control === "phone" ? toE164(e.target.value, f.phoneCountry) : e.target.value), onblur: onBlur });
       }
       default:
         // payment, appointment, file, address, signature: not offered on this page
