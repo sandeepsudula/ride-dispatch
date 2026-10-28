@@ -26,6 +26,11 @@ footer{padding:24px 0;color:var(--muted);font-size:14px;text-align:center}
 .book{display:flex;flex-direction:column;align-items:center;gap:12px}
 .price{font:800 28px var(--display);margin:0}
 .price small{font:500 16px var(--body);color:var(--muted)}
+.how{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:900px;margin:48px auto 0;text-align:left}
+.how div{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:22px}
+.how h2{font-size:20px;margin-bottom:6px}
+.how p{margin:0;color:var(--muted)}
+@media (max-width:720px){.how{grid-template-columns:1fr}}
 
 /* booking form */
 .formpage{padding:20px 0 64px}
