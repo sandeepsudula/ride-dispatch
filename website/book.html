@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Book a seat · Ride Dispatch</title>
+<meta name="description" content="Request a seat with Ride Dispatch.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top"><div class="wrap"><a class="brand" href="index.html"><span class="mark" aria-hidden="true">RD</span>Ride Dispatch</a></div></header>
+<main class="formpage">
+  <div class="wrap">
+    <div class="card">
+      <a class="back" href="index.html">← Back</a>
+      <h1>Book a seat</h1>
+      <p class="sub">$15 per seat. Send your details and we'll contact you to confirm.</p>
+      <div id="booking"></div>
+    </div>
+  </div>
+</main>
+<footer>© Ride Dispatch</footer>
+<script type="module">
+  // The form code (app.js) and Wix's form store come from the site's GitHub repo at a pinned
+  // commit, through a CDN, with a second CDN if the first is down.
+  const REV = "6fd282c8cc73fc6a539a07548db503760f23f37c";
+  const BASES = location.hostname === "localhost" ? ["."] : [
+    `https://cdn.jsdelivr.net/gh/sandeepsudula/ride-dispatch@${REV}/website`,
+    `https://rawcdn.githack.com/sandeepsudula/ride-dispatch/${REV}/website`,
+  ];
+  const root = document.getElementById("booking");
+  (async () => {
+    for (const base of BASES) {
+      try {
+        const [{ mountForm }, W] = await Promise.all([import(`${base}/app.js`), import(`${base}/js/wix-forms.js`)]);
+        return mountForm(W, root, "580de733-6e99-426b-ace9-0a886b7acdb5");
+      } catch (e) { /* try the next source */ }
+    }
+    root.innerHTML = '<p class="err">The booking form could not load. Please refresh the page.</p>';
+  })();
+</script>
+</body>
+</html>
