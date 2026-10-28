@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-store="./js/wix-forms.js">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -262,11 +262,23 @@ footer .wrap{display:flex;gap:16px;justify-content:space-between;flex-wrap:wrap;
 </footer>
 
 <script type="module">
-  import { mountForm } from "./app.js";
+  // The form code (app.js) and Wix's form store come from this site's GitHub repo at a pinned
+  // commit, through a CDN, with a second CDN if the first is down.
+  const REV = "5f86cee3dc85e1b51db203aa997d3df670b4ae1c";
+  const BASES = location.hostname === "localhost" ? ["."] : [
+    `https://cdn.jsdelivr.net/gh/sandeepsudula/ride-dispatch@${REV}/website`,
+    `https://rawcdn.githack.com/sandeepsudula/ride-dispatch/${REV}/website`,
+  ];
   const root = document.getElementById("waitlist");
-  import(document.documentElement.dataset.store)
-    .then((W) => mountForm(W, root, "06ca1a19-a538-4dd5-8149-940f0dd4d20d"))
-    .catch(() => { root.innerHTML = '<p class="err formerr">The sign-up form could not load. Please refresh the page.</p>'; });
+  (async () => {
+    for (const base of BASES) {
+      try {
+        const [{ mountForm }, W] = await Promise.all([import(`${base}/app.js`), import(`${base}/js/wix-forms.js`)]);
+        return mountForm(W, root, "06ca1a19-a538-4dd5-8149-940f0dd4d20d");
+      } catch (e) { /* try the next source */ }
+    }
+    root.innerHTML = '<p class="err formerr">The sign-up form could not load. Please refresh the page.</p>';
+  })();
 </script>
 </body>
 </html>
